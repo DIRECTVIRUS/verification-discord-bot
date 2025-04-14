@@ -35,7 +35,7 @@ dynamic_views = {}
 
 class VerificationModal(Modal):
     def __init__(self):
-        super().__init__(title="Verification Form")
+        super().__init__(title="Age Verification Form")
         self.day = TextInput(
             label="Birthdate - Day (DD)", 
             placeholder="Enter the day of your birth (e.g., 01)", 
@@ -287,7 +287,7 @@ class ConfigCommands(commands.Cog):
 
             # Create an embed for the verification message
             embed = discord.Embed(
-                title="Verification Required",
+                title="Age Verification Required",
                 description="Please verify with the button below.",
                 color=discord.Color.blue(),
             )
