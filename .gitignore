@@ -1,0 +1,18 @@
+# Ignore database folder
+database/
+
+# Ignore config folder
+config/
+
+# ignore all .env files
+*venv
+
+# Python-specific ignores
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+
+# VS Code-specific ignores
+.vscode/
