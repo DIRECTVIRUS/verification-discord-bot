@@ -451,6 +451,13 @@ async def sync_global_commands(ctx):
             color=discord.Color.green(),
         )
         await ctx.send(embed=embed)
+    except commands.NotOwner:
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You must be the owner of the bot to use this command.",
+            color=discord.Color.red(),
+        )
+        await ctx.send(embed=embed)
     except discord.Forbidden:
         embed = discord.Embed(
             title="Sync Failed",
