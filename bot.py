@@ -473,6 +473,17 @@ async def sync_global_commands(ctx):
         )
         await ctx.send(embed=embed)
 
+@bot.command(name="ping", description="Check the bot's latency.")
+async def ping(ctx):
+    """Responds with the bot's latency."""
+    latency = round(bot.latency * 1000)  # Convert latency to milliseconds
+    embed = discord.Embed(
+        title="Pong! 🏓",
+        description=f"Latency: {latency}ms",
+        color=discord.Color.blue(),
+    )
+    await ctx.send(embed=embed)
+
 async def main():
     """Main entry point for the bot."""
     async with bot:
