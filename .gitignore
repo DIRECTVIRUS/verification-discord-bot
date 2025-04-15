@@ -16,3 +16,8 @@ __pycache__/
 
 # VS Code-specific ignores
 .vscode/
+
+# Ignore the restart message file
+# This file is used to store the restart message for the bot
+# and should not be tracked by git.
+*restart_message.json*

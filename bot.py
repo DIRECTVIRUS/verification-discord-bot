@@ -8,6 +8,8 @@ from modules.verification import init_db, get_config, set_config, get_user_verif
 from modules.logging import log_verification
 from sqlalchemy.future import select
 from discord import app_commands
+import json
+import os
 
 # Load bot config file
 with open("config/config.yml", "r") as file:
@@ -197,8 +199,43 @@ class ConfigCommands(commands.Cog):
         print("ConfigCommands cog loaded.")
 
     @commands.Cog.listener()
-    async def on_ready(self):
-        print(f"Logged in as {self.bot.user}")
+    @bot.event
+    async def on_ready():
+        print(f"Logged in as {bot.user}")
+
+        # Check if there is a stored restart message
+        try:
+            with open("restart_message.json", "r") as file:
+                data = json.load(file)
+                channel_id = data["channel_id"]
+                message_id = data["message_id"]
+
+            # Fetch the channel and message
+            channel = bot.get_channel(channel_id)
+            if channel:
+                message = await channel.fetch_message(message_id)
+                embed = discord.Embed(
+                    title="Bot Restarted",
+                    description="The bot has successfully restarted!",
+                    color=discord.Color.green(),
+                )
+                await message.edit(embed=embed)
+
+                # Add a tick reaction to indicate success
+                await message.add_reaction("✅")
+
+            # Remove the file after editing the message
+            os.remove("restart_message.json")
+            print("Restart message file deleted successfully.")
+        except FileNotFoundError:
+            print("No restart_message.json file found.")
+        except KeyError:
+            print("Invalid data in restart_message.json.")
+        except discord.NotFound:
+            print("Message or channel not found.")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+
         await init_db()  # Initialize the database
 
         # Fetch the current configuration for all guilds
@@ -211,7 +248,7 @@ class ConfigCommands(commands.Cog):
             custom_id = f"verify_button_{config.guild_id}"
             if config.verification_channel_id:
                 view = DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
-                self.bot.add_view(view)  # Register the persistent view
+                bot.add_view(view)  # Register the persistent view
                 dynamic_views[custom_id] = view  # Track the view globally
                 print(f"Registered persistent view for guild {config.guild_id} with custom_id {custom_id}")
             else:
@@ -356,7 +393,12 @@ async def restart(ctx):
         description="The bot is restarting...",
         color=discord.Color.blue(),
     )
-    await ctx.send(embed=embed)
+    message = await ctx.send(embed=embed)
+    
+    # Save the message ID and channel ID to a file
+    with open("restart_message.json", "w") as file:
+        json.dump({"channel_id": ctx.channel.id, "message_id": message.id}, file)
+
     await bot.close()
 
 @bot.event
