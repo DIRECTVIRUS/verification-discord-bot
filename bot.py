@@ -25,6 +25,20 @@ intents.guilds = True
 intents.message_content = True
 intents.members = True  # Required to manage roles
 
+def is_guild_context():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if not interaction.guild:
+            # Notify the user that the command must be run in a server
+            embed = discord.Embed(
+                title="Command Not Available in DMs",
+                description="This command must be run in a server, not in a DM.",
+                color=discord.Color.red(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return False
+        return True
+    return app_commands.check(predicate)
+
 def is_admin():
     async def predicate(interaction: discord.Interaction) -> bool:
         if not interaction.user.guild_permissions.administrator:
@@ -261,6 +275,7 @@ class ConfigCommands(commands.Cog):
         verified_role="The role to assign to verified users"
     )
     @is_admin()
+    @is_guild_context()
     async def set_channels(self, interaction: discord.Interaction, verification_channel: discord.TextChannel, log_channel: discord.TextChannel, verified_role: discord.Role):
         """Slash command to set the verification and log channels, and the verified role."""
         await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
@@ -286,6 +301,7 @@ class ConfigCommands(commands.Cog):
 
     @discord.app_commands.command(name="send_verification", description="Send the verification button in the configured channel.")
     @is_admin()
+    @is_guild_context()
     async def send_verification(self, interaction: discord.Interaction):
         """Slash command to send the verification button."""
         await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
@@ -315,6 +331,7 @@ class ConfigCommands(commands.Cog):
     @discord.app_commands.command(name="clear_verification", description="Clear a user's verification record.")
     @discord.app_commands.describe(user="The user whose verification record should be cleared.")
     @is_admin()
+    @is_guild_context()
     async def clear_verification(self, interaction: discord.Interaction, user: discord.User):
         """Slash command to clear a user's verification record."""
         await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
@@ -324,20 +341,57 @@ class ConfigCommands(commands.Cog):
             )
             verification = result.scalars().first()
             if verification:
+                # Delete the verification record
                 await session.delete(verification)
                 await session.commit()
 
-                # Send success response
-                embed = discord.Embed(
+                # Remove the verified role
+                config = await get_config(interaction.guild.id)
+                role_removed = False
+                if config and config.verified_role_id:
+                    verified_role = interaction.guild.get_role(config.verified_role_id)
+                    if verified_role and verified_role in user.roles:
+                        await user.remove_roles(verified_role)
+                        role_removed = True
+
+                # Log the action (orange embed for the log channel)
+                log_embed = discord.Embed(
                     title="Verification Record Cleared",
-                    description=f"The verification record for {user.mention} has been cleared.",
-                    color=discord.Color.green(),
+                    description=f"Verification removed for {user.mention}",
+                    color=discord.Color.orange(),  # Orange for the log channel
+                )
+                log_embed.add_field(name="User ID", value=user.id, inline=True)
+                log_embed.add_field(name="Username", value=user.name, inline=True)
+                log_embed.add_field(name="Cleared By", value=f"{interaction.user.mention}", inline=True)
+                log_embed.set_thumbnail(url=user.display_avatar.url)
+
+                # Log the action to the configured log channel
+                await log_verification(interaction.client, interaction.guild.id, log_embed)
+
+                # Send success response (green embed for the user)
+                response_embed = discord.Embed(
+                    title="Verification Record Cleared",
+                    description=f"Verification removed for {user.mention}",
+                    color=discord.Color.green(),  # Green for the user response
+                )
+                response_embed.add_field(name="User ID", value=user.id, inline=True)
+                response_embed.add_field(name="Username", value=user.name, inline=True)
+                response_embed.add_field(name="Verified Role Removed", value="Yes" if role_removed else "No", inline=True)
+
+                await interaction.followup.send(embed=response_embed, ephemeral=True)
+            else:
+                # Handle the case where no verification record exists
+                embed = discord.Embed(
+                    title="No Verification Record Found",
+                    description=f"No verification record exists for {user.mention}.",
+                    color=discord.Color.orange(),
                 )
                 await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.app_commands.command(name="check_verification", description="Check the verification status of a user.")
     @discord.app_commands.describe(user="The user whose verification status you want to check.")
     @is_admin()
+    @is_guild_context()
     async def check_verification(self, interaction: discord.Interaction, user: discord.User):
         """Slash command to check the verification status of a user."""
         await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
@@ -346,7 +400,14 @@ class ConfigCommands(commands.Cog):
                 select(Verification).where(Verification.user_id == str(user.id))
             )
             verification = result.scalars().first()
+
             if verification:
+                # Calculate the user's age
+                today = datetime.date.today()
+                age = today.year - verification.birthdate.year - (
+                    (today.month, today.day) < (verification.birthdate.month, verification.birthdate.day)
+                )
+
                 # Create an embed for the verification status
                 embed = discord.Embed(
                     title="Verification Status",
@@ -356,12 +417,70 @@ class ConfigCommands(commands.Cog):
                 embed.add_field(name="User ID", value=user.id, inline=True)
                 embed.add_field(name="Username", value=verification.username, inline=True)
                 embed.add_field(name="Birthdate", value=verification.birthdate.strftime('%d-%m-%Y'), inline=True)
+                embed.add_field(name="Age", value=age, inline=True)
+                embed.set_thumbnail(url=user.display_avatar.url)
+
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                # Create an embed for the "User Not Verified" response
+                embed = discord.Embed(
+                    title="Verification Status",
+                    description=f"{user.mention} has not completed the verification process.",
+                    color=discord.Color.orange(),
+                )
+                embed.add_field(name="User ID", value=user.id, inline=True)
+                embed.add_field(name="Username", value=user.name, inline=True)
                 embed.set_thumbnail(url=user.display_avatar.url)
 
                 await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @discord.app_commands.command(name="show_verification_config", description="Show the current verification configuration for the server.")
+    @is_admin()
+    @is_guild_context()
+    async def show_verification_config(self, interaction: discord.Interaction):
+        """Slash command to show the current verification configuration for the server."""
+        await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
+
+        # Fetch the configuration for the guild
+        config = await get_config(interaction.guild.id)
+        if not config:
+            # If no configuration exists, notify the user
+            embed = discord.Embed(
+                title="No Configuration Found",
+                description="No verification configuration has been set for this server.",
+                color=discord.Color.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        # Create an embed to display the configuration
+        embed = discord.Embed(
+            title="Verification Configuration",
+            description="Here is the current verification configuration for this server:",
+            color=discord.Color.blue(),
+        )
+        embed.add_field(
+            name="Verification Channel",
+            value=f"<#{config.verification_channel_id}>" if config.verification_channel_id else "Not Set",
+            inline=False,
+        )
+        embed.add_field(
+            name="Log Channel",
+            value=f"<#{config.log_channel_id}>" if config.log_channel_id else "Not Set",
+            inline=False,
+        )
+        embed.add_field(
+            name="Verified Role",
+            value=f"<@&{config.verified_role_id}>" if config.verified_role_id else "Not Set",
+            inline=False,
+        )
+
+        # Send the embed as a response
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 @bot.command(name="sync", description="Sync slash commands to Discord globally.")
 @commands.is_owner()
+@is_guild_context()
 async def sync_global_commands(ctx):
     """Manually sync slash commands globally."""
     synced = await bot.tree.sync()
@@ -474,6 +593,11 @@ async def on_command_error(ctx, error):
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """Global error handler for app commands (slash commands)."""
+    if interaction.response.is_done():
+        # If the interaction has already been responded to, log the error and return
+        print(f"Unhandled app command error (interaction already responded): {error}")
+        return
+
     if isinstance(error, app_commands.CheckFailure):
         # Handle permission errors
         embed = discord.Embed(
