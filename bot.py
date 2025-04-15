@@ -391,8 +391,8 @@ async def restart(ctx, mode: str = None):
         if mode.lower() == "force":
             # Force shutdown without saving the restart message
             embed = discord.Embed(
-                title="Shutting Down",
-                description="The bot is shutting down without a restart message.",
+                title="Restarting Bot",
+                description="The bot is restarting without a confirm message.",
                 color=discord.Color.red(),
             )
             await ctx.send(embed=embed)
