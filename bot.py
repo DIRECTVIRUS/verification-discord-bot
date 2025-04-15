@@ -200,9 +200,8 @@ class ConfigCommands(commands.Cog):
 
     @commands.Cog.listener()
     @bot.event
-    async def on_ready():
+    async def on_ready(self):
         print(f"Logged in as {bot.user}")
-
         # Check if there is a stored restart message
         try:
             with open("restart_message.json", "r") as file:
@@ -248,7 +247,7 @@ class ConfigCommands(commands.Cog):
             custom_id = f"verify_button_{config.guild_id}"
             if config.verification_channel_id:
                 view = DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
-                bot.add_view(view)  # Register the persistent view
+                self.bot.add_view(view)  # Register the persistent view
                 dynamic_views[custom_id] = view  # Track the view globally
                 print(f"Registered persistent view for guild {config.guild_id} with custom_id {custom_id}")
             else:
