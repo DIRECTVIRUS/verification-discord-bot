@@ -362,30 +362,63 @@ async def restart(ctx):
 @bot.event
 async def on_command_error(ctx, error):
     """Global error handler for commands."""
-    if isinstance(error, commands.NotOwner):
-        # Handle the NotOwner error
+    try:
+        if isinstance(error, commands.NotOwner):
+            # Handle the NotOwner error
+            embed = discord.Embed(
+                title="Permission Denied",
+                description="Error: Only the bot owner can execute this command.",
+                color=discord.Color.red(),
+            )
+            await ctx.send(embed=embed)
+        elif isinstance(error, commands.MissingPermissions):
+            # Handle missing permissions for other commands
+            embed = discord.Embed(
+                title="Permission Denied",
+                description="You do not have the required permissions to use this command.",
+                color=discord.Color.red(),
+            )
+            await ctx.send(embed=embed)
+        elif isinstance(error, commands.CommandNotFound):
+            # Handle unknown commands
+            embed = discord.Embed(
+                title="Command Not Found",
+                description="The command you entered does not exist.",
+                color=discord.Color.orange(),
+            )
+            await ctx.send(embed=embed)
+        else:
+            # Handle other errors
+            embed = discord.Embed(
+                title="Error",
+                description="An unexpected error occurred. Please try again later.",
+                color=discord.Color.red(),
+            )
+            await ctx.send(embed=embed)
+            # Optionally log the error for debugging
+            print(f"Unhandled error: {error}")
+    except discord.Forbidden:
+        # Fallback to plain text if the bot cannot send embeds
+        if isinstance(error, commands.NotOwner):
+            await ctx.send("Error: Only the bot owner can execute this command.")
+        elif isinstance(error, commands.MissingPermissions):
+            await ctx.send("You do not have the required permissions to use this command.")
+        elif isinstance(error, commands.CommandNotFound):
+            await ctx.send("The command you entered does not exist.")
+        else:
+            await ctx.send("An unexpected error occurred. Please try again later.")
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    """Global error handler for app commands (slash commands)."""
+    if isinstance(error, app_commands.CheckFailure):
+        # Handle permission errors
         embed = discord.Embed(
             title="Permission Denied",
-            description="Error: Only the bot owner can execute this command.",
+            description="You do not have permission to use this command.",
             color=discord.Color.red(),
         )
-        await ctx.send(embed=embed)
-    elif isinstance(error, commands.MissingPermissions):
-        # Handle missing permissions for other commands
-        embed = discord.Embed(
-            title="Permission Denied",
-            description="You do not have the required permissions to use this command.",
-            color=discord.Color.red(),
-        )
-        await ctx.send(embed=embed)
-    elif isinstance(error, commands.CommandNotFound):
-        # Handle unknown commands
-        embed = discord.Embed(
-            title="Command Not Found",
-            description="The command you entered does not exist.",
-            color=discord.Color.orange(),
-        )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
         # Handle other errors
         embed = discord.Embed(
@@ -393,16 +426,9 @@ async def on_command_error(ctx, error):
             description="An unexpected error occurred. Please try again later.",
             color=discord.Color.red(),
         )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         # Optionally log the error for debugging
-        print(f"Unhandled error: {error}")
-
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.CheckFailure):
-        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
-    else:
-        await interaction.response.send_message("An unexpected error occurred.", ephemeral=True)
+        print(f"Unhandled app command error: {error}")
 
 async def main():
     """Main entry point for the bot."""
