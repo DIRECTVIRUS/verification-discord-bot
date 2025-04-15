@@ -48,17 +48,17 @@ class VerificationModal(Modal):
         self.day = TextInput(
             label="Birthdate - Day (DD)", 
             placeholder="Enter the day of your birth (e.g., 01)", 
-            max_length=2
+            max_length=2 , min_length=2
         )
         self.month = TextInput(
             label="Birthdate - Month (MM)", 
             placeholder="Enter the month of your birth (e.g., 01 for January)", 
-            max_length=2
+            max_length=2, min_length=2
         )
         self.year = TextInput(
             label="Birthdate - Year (YYYY)", 
             placeholder="Enter the year of your birth (e.g., 2000)", 
-            max_length=4
+            max_length=4, min_length=4
         )
         self.add_item(self.day)
         self.add_item(self.month)
