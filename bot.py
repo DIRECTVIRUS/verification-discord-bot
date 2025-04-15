@@ -484,6 +484,18 @@ async def ping(ctx):
     )
     await ctx.send(embed=embed)
 
+@bot.command(name="restart", description="Restart the bot.")
+@commands.is_owner()
+async def restart(ctx):
+    """restart the bot. note: only works if you have a restart script setup for your OS."""
+    embed = discord.Embed(
+        title="Restarting Bot",
+        description="The bot is restarting...",
+        color=discord.Color.blue(),
+    )
+    await ctx.send(embed=embed)
+    await bot.close()
+
 async def main():
     """Main entry point for the bot."""
     async with bot:
