@@ -228,99 +228,53 @@ class ConfigCommands(commands.Cog):
     async def set_channels(self, interaction: discord.Interaction, verification_channel: discord.TextChannel, log_channel: discord.TextChannel, verified_role: discord.Role):
         """Slash command to set the verification and log channels, and the verified role."""
         await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
-        try:
-            await set_config(interaction.guild.id, verification_channel.id, log_channel.id, verified_role.id)
-            
-            # Create or update the dynamic view
-            custom_id = f"verify_button_{interaction.guild.id}"
-            view = DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
-            dynamic_views[custom_id] = view  # Track the view globally
-            self.bot.add_view(view)  # Re-register the view
-            
-            # Create an embed for the success response
-            embed = discord.Embed(
-                title="Configuration Updated",
-                description="The server configuration has been updated successfully.",
-                color=discord.Color.green(),
-            )
-            embed.add_field(name="Verification Channel", value=verification_channel.mention, inline=False)
-            embed.add_field(name="Log Channel", value=log_channel.mention, inline=False)
-            embed.add_field(name="Verified Role", value=verified_role.mention, inline=False)
-            
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except Exception as e:
-            print(f"Error in /set_channels: {e}")
-            
-            # Create an embed for the error response
-            embed = discord.Embed(
-                title="Error",
-                description="An error occurred while processing the command. Please try again later.",
-                color=discord.Color.red(),
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+        await set_config(interaction.guild.id, verification_channel.id, log_channel.id, verified_role.id)
+
+        # Create or update the dynamic view
+        custom_id = f"verify_button_{interaction.guild.id}"
+        view = DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
+        dynamic_views[custom_id] = view  # Track the view globally
+        self.bot.add_view(view)  # Re-register the view
+
+        # Create an embed for the success response
+        embed = discord.Embed(
+            title="Configuration Updated",
+            description="The server configuration has been updated successfully.",
+            color=discord.Color.green(),
+        )
+        embed.add_field(name="Verification Channel", value=verification_channel.mention, inline=False)
+        embed.add_field(name="Log Channel", value=log_channel.mention, inline=False)
+        embed.add_field(name="Verified Role", value=verified_role.mention, inline=False)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.app_commands.command(name="send_verification", description="Send the verification button in the configured channel.")
     @is_admin()
     async def send_verification(self, interaction: discord.Interaction):
         """Slash command to send the verification button."""
         await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
-        try:
-            config = await get_config(interaction.guild.id)
-            if not config:
-                embed = discord.Embed(
-                    title="Configuration Not Found",
-                    description="Please set up the configuration using `/set_channels`.",
-                    color=discord.Color.red(),
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
+        config = await get_config(interaction.guild.id)
+        channel = self.bot.get_channel(config.verification_channel_id)
 
-            if not config.verification_channel_id:
-                embed = discord.Embed(
-                    title="Verification Channel Not Configured",
-                    description="Please set up the verification channel using `/set_channels`.",
-                    color=discord.Color.red(),
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
+        # Create an embed for the verification message
+        embed = discord.Embed(
+            title="Age Verification Required",
+            description="Please verify with the button below.",
+            color=discord.Color.blue(),
+        )
 
-            channel = self.bot.get_channel(config.verification_channel_id)
-            if not channel:
-                embed = discord.Embed(
-                    title="Invalid Verification Channel",
-                    description="The configured verification channel is invalid or inaccessible.",
-                    color=discord.Color.red(),
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
+        # Use the existing view or create a new one
+        custom_id = f"verify_button_{interaction.guild.id}"
+        view = dynamic_views.get(custom_id) or DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
+        dynamic_views[custom_id] = view  # Track the view globally
 
-            # Create an embed for the verification message
-            embed = discord.Embed(
-                title="Age Verification Required",
-                description="Please verify with the button below.",
-                color=discord.Color.blue(),
-            )
-
-            # Use the existing view or create a new one
-            custom_id = f"verify_button_{interaction.guild.id}"
-            view = dynamic_views.get(custom_id) or DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
-            dynamic_views[custom_id] = view  # Track the view globally
-
-            await channel.send(embed=embed, view=view)
-            embed = discord.Embed(
-                title="Verification Button Sent",
-                description="The verification button has been sent successfully.",
-                color=discord.Color.green(),
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except Exception as e:
-            print(f"Error in /send_verification: {e}")
-            embed = discord.Embed(
-                title="Error",
-                description="An error occurred while processing the command. Please try again later.",
-                color=discord.Color.red(),
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+        await channel.send(embed=embed, view=view)
+        embed = discord.Embed(
+            title="Verification Button Sent",
+            description="The verification button has been sent successfully.",
+            color=discord.Color.green(),
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.app_commands.command(name="clear_verification", description="Clear a user's verification record.")
     @discord.app_commands.describe(user="The user whose verification record should be cleared.")
@@ -328,67 +282,22 @@ class ConfigCommands(commands.Cog):
     async def clear_verification(self, interaction: discord.Interaction, user: discord.User):
         """Slash command to clear a user's verification record."""
         await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
-        try:
-            async with async_session() as session:
-                result = await session.execute(
-                    select(Verification).where(Verification.user_id == str(user.id))
-                )
-                verification = result.scalars().first()
-                if verification:
-                    # Remove the verification record from the database
-                    await session.delete(verification)
-                    await session.commit()
-
-                    # Fetch the server configuration
-                    config = await get_config(interaction.guild.id)
-                    if config and config.verified_role_id:
-                        # Attempt to remove the verified role from the user
-                        verified_role = interaction.guild.get_role(config.verified_role_id)
-                        if verified_role and verified_role in user.roles:
-                            await user.remove_roles(verified_role)
-                            role_message = f"The verified role {verified_role.mention} has been removed."
-                        else:
-                            role_message = "The user does not have the verified role or the role could not be found."
-                    else:
-                        role_message = "The verified role is not configured for this server."
-
-                    # Log the action to the logging channel
-                    if config and config.log_channel_id:
-                        log_channel = interaction.guild.get_channel(config.log_channel_id)
-                        if log_channel:
-                            embed = discord.Embed(
-                                title="Verification Record Cleared",
-                                color=discord.Color.orange(),
-                            )
-                            embed.add_field(name="Verification Removed For", value=user.mention, inline=False)
-                            embed.add_field(name="User ID", value=user.id, inline=True)
-                            embed.add_field(name="Username", value=user.name, inline=True)
-                            embed.add_field(name="Cleared By", value=interaction.user.mention, inline=True)
-                            await log_channel.send(embed=embed)
-
-                    # Send success response
-                    embed = discord.Embed(
-                        title="Verification Record Cleared",
-                        description=f"The verification record for {user.mention} has been cleared.\n{role_message}",
-                        color=discord.Color.green(),
-                    )
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                else:
-                    # Send response if no verification record is found
-                    embed = discord.Embed(
-                        title="No Verification Record Found",
-                        description=f"No verification record found for {user.mention}.",
-                        color=discord.Color.red(),
-                    )
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-        except Exception as e:
-            print(f"Error in /clear_verification: {e}")
-            embed = discord.Embed(
-                title="Error",
-                description="An error occurred while processing the command. Please try again later.",
-                    olor=discord.Color.red(),
+        async with async_session() as session:
+            result = await session.execute(
+                select(Verification).where(Verification.user_id == str(user.id))
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            verification = result.scalars().first()
+            if verification:
+                await session.delete(verification)
+                await session.commit()
+
+                # Send success response
+                embed = discord.Embed(
+                    title="Verification Record Cleared",
+                    description=f"The verification record for {user.mention} has been cleared.",
+                    color=discord.Color.green(),
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.app_commands.command(name="check_verification", description="Check the verification status of a user.")
     @discord.app_commands.describe(user="The user whose verification status you want to check.")
@@ -396,91 +305,36 @@ class ConfigCommands(commands.Cog):
     async def check_verification(self, interaction: discord.Interaction, user: discord.User):
         """Slash command to check the verification status of a user."""
         await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
-        try:
-            async with async_session() as session:
-                result = await session.execute(
-                    select(Verification).where(Verification.user_id == str(user.id))
-                )
-                verification = result.scalars().first()
-                if verification:
-                    # Format the birthdate as DD-MM-YYYY
-                    birthdate = verification.birthdate.strftime('%d-%m-%Y') if verification.birthdate else "Not provided"
-
-                    # Calculate the user's age
-                    today = datetime.date.today()
-                    age = (
-                        today.year - verification.birthdate.year
-                        - ((today.month, today.day) < (verification.birthdate.month, verification.birthdate.day))
-                        if verification.birthdate
-                        else "Not provided"
-                    )
-
-                    # Create an embed for the verification status
-                    embed = discord.Embed(
-                        title="Verification Status",
-                        description=f"Verification details for {user.mention}",
-                        color=discord.Color.green(),
-                    )
-                    embed.add_field(name="User ID", value=user.id, inline=True)
-                    embed.add_field(name="Username", value=verification.username, inline=True)
-                    embed.add_field(name="Birthdate", value=birthdate, inline=True)
-                    embed.add_field(name="Age", value=age, inline=True)
-                    embed.set_thumbnail(url=user.display_avatar.url)
-
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                else:
-                    # Create an embed for unverified users
-                    embed = discord.Embed(
-                        title="Verification Status",
-                        description=f"{user.mention} is not verified.",
-                        color=discord.Color.red(),
-                    )
-                    embed.add_field(name="User ID", value=user.id, inline=True)
-                    embed.set_thumbnail(url=user.display_avatar.url)
-
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-        except Exception as e:
-            print(f"Error in /check_verification: {e}")
-            embed = discord.Embed(
-                title="Error",
-                description="An error occurred while processing the command. Please try again later.",
-                color=discord.Color.red(),
+        async with async_session() as session:
+            result = await session.execute(
+                select(Verification).where(Verification.user_id == str(user.id))
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            verification = result.scalars().first()
+            if verification:
+                # Create an embed for the verification status
+                embed = discord.Embed(
+                    title="Verification Status",
+                    description=f"Verification details for {user.mention}",
+                    color=discord.Color.green(),
+                )
+                embed.add_field(name="User ID", value=user.id, inline=True)
+                embed.add_field(name="Username", value=verification.username, inline=True)
+                embed.add_field(name="Birthdate", value=verification.birthdate.strftime('%d-%m-%Y'), inline=True)
+                embed.set_thumbnail(url=user.display_avatar.url)
+
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
 @bot.command(name="sync", description="Sync slash commands to Discord globally.")
 @commands.is_owner()
 async def sync_global_commands(ctx):
     """Manually sync slash commands globally."""
-    try:
-        synced = await bot.tree.sync()
-        embed = discord.Embed(
-            title="Commands Synced",
-            description=f"Successfully synced {len(synced)} global commands.",
-            color=discord.Color.green(),
-        )
-        await ctx.send(embed=embed)
-    except commands.NotOwner:
-        embed = discord.Embed(
-            title="Permission Denied",
-            description="Error: Only the bot owner can execute this command.",
-            color=discord.Color.red(),
-        )
-        await ctx.send(embed=embed)
-    except discord.Forbidden:
-        embed = discord.Embed(
-            title="Sync Failed",
-            description="Failed to sync commands globally: Missing Access (403 Forbidden). Check the bot's permissions.",
-            color=discord.Color.red(),
-        )
-        await ctx.send(embed=embed)
-    except Exception as e:
-        embed = discord.Embed(
-            title="Sync Failed",
-            description=f"An error occurred while syncing commands: {e}",
-            color=discord.Color.red(),
-        )
-        await ctx.send(embed=embed)
+    synced = await bot.tree.sync()
+    embed = discord.Embed(
+        title="Commands Synced",
+        description=f"Successfully synced {len(synced)} global commands.",
+        color=discord.Color.green(),
+    )
+    await ctx.send(embed=embed)
 
 @bot.command(name="ping", description="Check the bot's latency.")
 async def ping(ctx):
@@ -497,21 +351,58 @@ async def ping(ctx):
 @commands.is_owner()
 async def restart(ctx):
     """Restart the bot."""
-    try:
-        embed = discord.Embed(
-            title="Restarting Bot",
-            description="The bot is restarting...",
-            color=discord.Color.blue(),
-        )
-        await ctx.send(embed=embed)
-        await bot.close()
-    except commands.NotOwner:
+    embed = discord.Embed(
+        title="Restarting Bot",
+        description="The bot is restarting...",
+        color=discord.Color.blue(),
+    )
+    await ctx.send(embed=embed)
+    await bot.close()
+
+@bot.event
+async def on_command_error(ctx, error):
+    """Global error handler for commands."""
+    if isinstance(error, commands.NotOwner):
+        # Handle the NotOwner error
         embed = discord.Embed(
             title="Permission Denied",
             description="Error: Only the bot owner can execute this command.",
             color=discord.Color.red(),
         )
         await ctx.send(embed=embed)
+    elif isinstance(error, commands.MissingPermissions):
+        # Handle missing permissions for other commands
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You do not have the required permissions to use this command.",
+            color=discord.Color.red(),
+        )
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.CommandNotFound):
+        # Handle unknown commands
+        embed = discord.Embed(
+            title="Command Not Found",
+            description="The command you entered does not exist.",
+            color=discord.Color.orange(),
+        )
+        await ctx.send(embed=embed)
+    else:
+        # Handle other errors
+        embed = discord.Embed(
+            title="Error",
+            description="An unexpected error occurred. Please try again later.",
+            color=discord.Color.red(),
+        )
+        await ctx.send(embed=embed)
+        # Optionally log the error for debugging
+        print(f"Unhandled error: {error}")
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+    else:
+        await interaction.response.send_message("An unexpected error occurred.", ephemeral=True)
 
 async def main():
     """Main entry point for the bot."""
