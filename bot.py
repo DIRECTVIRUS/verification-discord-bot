@@ -25,7 +25,16 @@ intents.members = True  # Required to manage roles
 
 def is_admin():
     async def predicate(interaction: discord.Interaction) -> bool:
-        return interaction.user.guild_permissions.administrator
+        if not interaction.user.guild_permissions.administrator:
+            # Send an error response if the user is not an admin
+            embed = discord.Embed(
+                title="Permission Denied",
+                description="You do not have permission to use this command.",
+                color=discord.Color.red(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return False
+        return True
     return app_commands.check(predicate)
 
 bot = commands.Bot(command_prefix="l!", intents=intents)
@@ -454,7 +463,7 @@ async def sync_global_commands(ctx):
     except commands.NotOwner:
         embed = discord.Embed(
             title="Permission Denied",
-            description="You must be the owner of the bot to use this command.",
+            description="Error: Only the bot owner can execute this command.",
             color=discord.Color.red(),
         )
         await ctx.send(embed=embed)
@@ -487,14 +496,22 @@ async def ping(ctx):
 @bot.command(name="restart", description="Restart the bot.")
 @commands.is_owner()
 async def restart(ctx):
-    """restart the bot. note: only works if you have a restart script setup for your OS."""
-    embed = discord.Embed(
-        title="Restarting Bot",
-        description="The bot is restarting...",
-        color=discord.Color.blue(),
-    )
-    await ctx.send(embed=embed)
-    await bot.close()
+    """Restart the bot."""
+    try:
+        embed = discord.Embed(
+            title="Restarting Bot",
+            description="The bot is restarting...",
+            color=discord.Color.blue(),
+        )
+        await ctx.send(embed=embed)
+        await bot.close()
+    except commands.NotOwner:
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="Error: Only the bot owner can execute this command.",
+            color=discord.Color.red(),
+        )
+        await ctx.send(embed=embed)
 
 async def main():
     """Main entry point for the bot."""
