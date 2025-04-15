@@ -385,15 +385,37 @@ async def ping(ctx):
 
 @bot.command(name="restart", description="Restart the bot.")
 @commands.is_owner()
-async def restart(ctx):
-    """Restart the bot."""
+async def restart(ctx, mode: str = None):
+    """Restart the bot with an optional 'force' mode."""
+    if mode:
+        if mode.lower() == "force":
+            # Force shutdown without saving the restart message
+            embed = discord.Embed(
+                title="Shutting Down",
+                description="The bot is shutting down without a restart message.",
+                color=discord.Color.red(),
+            )
+            await ctx.send(embed=embed)
+            await bot.close()
+            return
+        else:
+            # Handle invalid argument
+            embed = discord.Embed(
+                title="Invalid Argument",
+                description="Invalid argument provided. Use `force` to force a shutdown or leave it blank for a normal restart.",
+                color=discord.Color.orange(),
+            )
+            await ctx.send(embed=embed)
+            return
+
+    # Normal restart with restart message
     embed = discord.Embed(
         title="Restarting Bot",
         description="The bot is restarting...",
         color=discord.Color.blue(),
     )
     message = await ctx.send(embed=embed)
-    
+
     # Save the message ID and channel ID to a file
     with open("restart_message.json", "w") as file:
         json.dump({"channel_id": ctx.channel.id, "message_id": message.id}, file)
