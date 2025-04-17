@@ -582,13 +582,35 @@ async def on_command_error(ctx, error):
     except discord.Forbidden:
         # Fallback to plain text if the bot cannot send embeds
         if isinstance(error, commands.NotOwner):
-            await ctx.send("Error: Only the bot owner can execute this command.")
+            embed = discord.Embed(
+                title="Error",
+                description="Error: This command is for bot owners only.",
+                color=discord.Color.red(),
+            )
+            await ctx.send(embed=embed)
         elif isinstance(error, commands.MissingPermissions):
-            await ctx.send("You do not have the required permissions to use this command.")
+            embed = discord.Embed(
+                title="Error",
+                description="Error: You do not have the required permissions to use this command.",
+                color=discord.Color.red(),
+            )
+            await ctx.send(embed=embed)
         elif isinstance(error, commands.CommandNotFound):
-            await ctx.send("The command you entered does not exist.")
+            embed = discord.Embed(
+                title="Error",
+                description="Error: The command you entered does not exist.",
+                color=discord.Color.red(),
+            )
+            await ctx.send(embed=embed)
         else:
-            await ctx.send("An unexpected error occurred. Please try again later.")
+            embed = discord.Embed(
+                title="Error",
+                description="Error: An unexpected error occurred. Please try again later.",
+                color=discord.Color.red(),
+            )
+            await ctx.send(embed=embed)
+            # Log the unexpected error to the console
+            print(f"Unexpected error: {error}")
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
