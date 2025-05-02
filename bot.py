@@ -95,6 +95,8 @@ class VerificationModal(Modal):
             # Check if the user is under 18
             if age < 18:
                 # Log the underage attempt
+                print(f"User {interaction.user.id} attempted to verify but is under 18.")
+                # Create an embed for logging
                 embed = discord.Embed(
                     title="Verification Failed",
                     description=f"{interaction.user.mention} attempted to verify but is under 18.",
