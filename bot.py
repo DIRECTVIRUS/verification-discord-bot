@@ -313,8 +313,12 @@ class ConfigCommands(commands.Cog):
         # Create an embed for the verification message
         embed = discord.Embed(
             title="Age Verification Required",
-            description="Please verify with the button below.",
+            description="In order to access the server you must verify your age in accordance with the server rules.",
             color=discord.Color.blue(),
+        )
+        embed.add_field(
+            name="Instructions",
+            value="Please verify with the button below"
         )
 
         # Use the existing view or create a new one
