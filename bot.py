@@ -390,7 +390,7 @@ class ConfigCommands(commands.Cog):
                 embed = discord.Embed(
                     title="No Verification Record Found",
                     description=f"No verification record exists for {user.mention}.",
-                    color=discord.Color.orange(),
+                    color=discord.Color.red(),
                 )
                 await interaction.followup.send(embed=embed, ephemeral=True)
 
