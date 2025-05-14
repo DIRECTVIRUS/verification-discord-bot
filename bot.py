@@ -6,6 +6,8 @@ import datetime
 import yaml
 from modules.verification import init_db, get_config, set_config, get_user_verification, add_user_verification, async_session, Verification, Config
 from modules.logging import log_verification
+from modules.selfroles_db import selfrole_session, SelfRoleConfig, init_selfrole_db
+from modules.selfroles import SelfRolesView
 from sqlalchemy.future import select
 from discord import app_commands
 import json
@@ -269,6 +271,21 @@ class ConfigCommands(commands.Cog):
             else:
                 print(f"Skipping guild {config.guild_id}: verification_channel_id is not set.")
         print("Dynamic persistent verification views registered.")
+
+        # Fetch all self-role configurations and register persistent views
+        async with selfrole_session() as session:
+            result = await session.execute(select(SelfRoleConfig))
+            configs = result.scalars().all()
+
+        for config in configs:
+            roles_and_labels = json.loads(config.roles_and_labels)
+            roles_and_labels_parsed = [
+                (bot.get_guild(config.guild_id).get_role(int(role_id)), label)
+                for role_id, label in roles_and_labels.items()
+            ]
+            view = SelfRolesView(roles_and_labels_parsed)
+            bot.add_view(view)  # Register the persistent view globally
+        print("Persistent self-role views registered.")
 
     @discord.app_commands.command(name="set_channels", description="Set the verification, log channels, and verified role for the server.")
     @discord.app_commands.describe(
@@ -653,9 +670,17 @@ async def main():
         view = DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
         bot.add_view(view)  # Register the persistent view globally
 
+        await init_selfrole_db()  # Initialize the self-role database
+
         # Add the ConfigCommands cog
         await bot.add_cog(ConfigCommands(bot))  # Await the cog addition
-        await bot.start(TOKEN)
+
+        # add selfroles cog
+
+        from modules.selfroles import SelfRoles
+        await bot.add_cog(SelfRoles(bot))
+
+        await bot.start(TOKEN)  # Start the bot
 
 # Run the bot
 asyncio.run(main())
