@@ -227,6 +227,69 @@ class SelfRoles(commands.Cog):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @app_commands.command(name="send_selfroles", description="Send the self-roles message in the configured channel.")
+    @app_commands.describe(
+        message_name="The name of the self-role message to send.",
+        channel="The channel where the self-roles message should be sent."
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def send_selfroles(self, interaction: discord.Interaction, message_name: str, channel: discord.TextChannel):
+        """
+        Slash command to send the self-roles message to a specified channel.
+        """
+        config = await get_selfrole_config(interaction.guild.id, message_name)
+        if not config:
+            embed = discord.Embed(
+                title="No Configuration Found",
+                description=f"No self-roles configuration found for `{message_name}`. Use `/set_selfroles` to configure roles first.",
+                color=discord.Color.red(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        # Parse the roles and labels from the configuration
+        roles_and_labels = json.loads(config.roles_and_labels)
+        roles_and_labels_parsed = [
+            (interaction.guild.get_role(int(role_id)), label)
+            for role_id, label in roles_and_labels.items()
+        ]
+
+        # Create the embed for the self-roles message
+        embed = discord.Embed(
+            title=config.embed_title,
+            description=config.embed_description,
+            color=discord.Color.blue(),
+        )
+        for role, label in roles_and_labels_parsed:
+            embed.add_field(name=label, value=f"Role: {role.mention} (ID: {role.id})", inline=False)
+
+        # Map button color to Discord button styles
+        button_styles = {
+            "primary": discord.ButtonStyle.primary,
+            "secondary": discord.ButtonStyle.secondary,
+            "success": discord.ButtonStyle.success,
+            "danger": discord.ButtonStyle.danger,
+        }
+        button_style = button_styles.get(config.button_color, discord.ButtonStyle.primary)
+
+        # Create the view with buttons for each role
+        view = SelfRolesView(roles_and_labels_parsed, button_style)
+
+        # Send the message to the specified channel
+        await channel.send(embed=embed, view=view)
+
+        # Notify the user that the message was sent
+        embed = discord.Embed(
+            title="Message Sent",
+            description=f"The self-roles message `{message_name}` has been sent to {channel.mention}.",
+            color=discord.Color.green(),
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        # Register the view globally to make it persistent
+        self.bot.add_view(view)
+
+
 async def setup(bot):
     await init_selfrole_db()  # Initialize the self-role database
     await bot.add_cog(SelfRoles(bot))
