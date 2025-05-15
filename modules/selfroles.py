@@ -31,7 +31,7 @@ class SelfRoleDropdown(Select):
                 await member.remove_roles(role)
                 embed = discord.Embed(
                     title="Role Removed",
-                    description=f"Removed **{role.name}** from you.",
+                    description=f"Removed **{role.name}** from **{member.display_name}**.",
                     color=discord.Color.red(),
                 )
             else:
@@ -39,7 +39,7 @@ class SelfRoleDropdown(Select):
                 await member.add_roles(role)
                 embed = discord.Embed(
                     title="Role Assigned",
-                    description=f"Assigned **{role.name}** to you.",
+                    description=f"Assigned **{role.name}** to **{member.display_name}**.",
                     color=discord.Color.green(),
                 )
             await interaction.response.send_message(embed=embed, ephemeral=True)
