@@ -86,7 +86,7 @@ A Discord bot designed to handle user verification, self-assignable roles, and l
 1. Make sure your virtual environment is activated.
 2. Run the bot:
    ```bash
-   python main.py
+   python bot.py
    ```
 3. The bot should now be online in your server.
 4. as the owner do l!sync to sync the slash commands with discord.
