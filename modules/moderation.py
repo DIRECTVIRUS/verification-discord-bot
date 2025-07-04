@@ -248,7 +248,7 @@ class Moderation(commands.Cog):
         warnings = await get_user_warnings(interaction.guild.id, member.id)
         warning_count = len(warnings)
             
-        # Create an embed for the warning log
+        # Create an embed for the warning log (includes moderator info for log channel)
         embed = discord.Embed(
             title="Warning",
             description=f"User warned: {member.mention}",
@@ -257,12 +257,20 @@ class Moderation(commands.Cog):
         embed.add_field(name="ID", value=f"#{warning_id}", inline=True)
         embed.add_field(name="Reason", value=reason, inline=True)
         embed.add_field(name="Count", value=f"{warning_count}/3", inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
         
-        # Log the warning
-        await moderation_logging.log_moderation_action(self.bot, interaction.guild.id, embed)
+        # Create a copy of the embed for the moderator without moderator field
+        mod_embed = discord.Embed(
+            title="Warning",
+            description=f"User warned: {member.mention}",
+            color=discord.Color.yellow(),
+        )
+        mod_embed.add_field(name="ID", value=f"#{warning_id}", inline=True)
+        mod_embed.add_field(name="Reason", value=reason, inline=True)
+        mod_embed.add_field(name="Count", value=f"{warning_count}/3", inline=True)
         
         # Send confirmation to the moderator
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=mod_embed, ephemeral=True)
         
         # Track if we successfully DM'd the user
         dm_sent = False
@@ -371,7 +379,7 @@ class Moderation(commands.Cog):
                 )
                 await interaction.followup.send(embed=error_embed, ephemeral=True)
 
-    @app_commands.command(name="warnings", description="List all warnings for a member.")
+    @app_commands.command(name="warnings", description="List all warnings for a member. Staff only.")
     @app_commands.describe(member="The member to check warnings for.")
     @is_mod()
     async def warnings(self, interaction: discord.Interaction, member: discord.Member):
@@ -392,11 +400,11 @@ class Moderation(commands.Cog):
             color=discord.Color.yellow(),
         )
         
-        for i, warning in enumerate(warnings, 1):
+        for warning in warnings:
+            timestamp = warning.timestamp.strftime("%Y-%m-%d %H:%M:%S")
             moderator = interaction.guild.get_member(warning.moderator_id)
             moderator_name = moderator.mention if moderator else f"<@{warning.moderator_id}>"
             
-            timestamp = warning.timestamp.strftime("%Y-%m-%d %H:%M:%S")
             embed.add_field(
                 name=f"Warning #{warning.id}",
                 value=f"**Reason:** {warning.reason}\n**Moderator:** {moderator_name}\n**Date:** {timestamp}",
@@ -481,7 +489,7 @@ class Moderation(commands.Cog):
         success = await remove_warning(warning_id)
         
         if success:
-            # Create the embed for the log
+            # Create the embed for the log (with moderator info)
             log_embed = discord.Embed(
                 title="Warning Removed",
                 description=f"#{warning_id} from {user_mention}",
@@ -489,6 +497,7 @@ class Moderation(commands.Cog):
             )
             log_embed.add_field(name="Reason", value=warning.reason, inline=True)
             log_embed.add_field(name="Count", value=f"{warning_count-1}/3", inline=True)
+            log_embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
             
             if warning_count == 3:
                 log_embed.add_field(
@@ -500,9 +509,25 @@ class Moderation(commands.Cog):
             # Log the action
             await moderation_logging.log_moderation_action(self.bot, interaction.guild.id, log_embed)
             
+            # Create a copy for the moderator without the moderator field
+            mod_embed = discord.Embed(
+                title="Warning Removed",
+                description=f"#{warning_id} from {user_mention}",
+                color=discord.Color.green(),
+            )
+            mod_embed.add_field(name="Reason", value=warning.reason, inline=True)
+            mod_embed.add_field(name="Count", value=f"{warning_count-1}/3", inline=True)
+            
+            if warning_count == 3:
+                mod_embed.add_field(
+                    name="Note", 
+                    value="Auto-ban prevented", 
+                    inline=False
+                )
+            
             # Notify the moderator
             await interaction.response.send_message(
-                embed=log_embed,
+                embed=mod_embed,
                 ephemeral=True
             )
             
@@ -517,7 +542,6 @@ class Moderation(commands.Cog):
                     color=discord.Color.green()
                 )
                 user_embed.add_field(name="Reason", value=warning.reason, inline=True)
-                user_embed.add_field(name="By", value=interaction.user.name, inline=True)
                 
                 if user:  # Make sure user object exists
                     await user.send(embed=user_embed)
@@ -585,7 +609,6 @@ class Moderation(commands.Cog):
                     description=f"{count} warnings removed in {interaction.guild.name}",
                     color=discord.Color.green()
                 )
-                user_embed.add_field(name="By", value=interaction.user.name, inline=True)
                 await member.send(embed=user_embed)
                 dm_sent = True
             except discord.Forbidden:
@@ -648,6 +671,8 @@ class Moderation(commands.Cog):
 
         # Send the embed as a response
         await interaction.followup.send(embed=embed, ephemeral=True)
+    
+
         
 async def setup(bot):
     await bot.add_cog(Moderation(bot))
