@@ -8,6 +8,7 @@ from modules.verification import init_db, get_config, set_config, get_user_verif
 from modules.logging import log_verification
 from modules.selfroles_db import selfrole_session, SelfRoleConfig, init_selfrole_db
 from modules.selfroles import SelfRolesView
+from modules.moderation_db import init_moderation_db
 from sqlalchemy.future import select
 from discord import app_commands
 import json
@@ -32,8 +33,8 @@ def is_guild_context():
         if not interaction.guild:
             # Notify the user that the command must be run in a server
             embed = discord.Embed(
-                title="Command Not Available in DMs",
-                description="This command must be run in a server, not in a DM.",
+                title="Error",
+                description="Command must be used in a server.",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -46,8 +47,8 @@ def is_admin():
         if not interaction.user.guild_permissions.administrator:
             # Send an error response if the user is not an admin
             embed = discord.Embed(
-                title="Permission Denied",
-                description="You do not have permission to use this command.",
+                title="Error",
+                description="Admin permissions required.",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -96,12 +97,10 @@ class VerificationModal(Modal):
 
             # Check if the user is under 18
             if age < 18:
-                # Log the underage attempt
-                print(f"User {interaction.user.id} attempted to verify but is under 18.")
                 # Create an embed for logging
                 embed = discord.Embed(
                     title="Verification Failed",
-                    description=f"{interaction.user.mention} attempted to verify but is under 18.",
+                    description=f"{interaction.user.mention} - Under 18.",
                     color=discord.Color.red(),
                 )
                 embed.add_field(name="User ID", value=interaction.user.id, inline=True)
@@ -126,14 +125,29 @@ class VerificationModal(Modal):
             if config and config.verified_role_id:
                 verified_role = interaction.guild.get_role(config.verified_role_id)
                 if verified_role:
-                    await interaction.user.add_roles(verified_role)
+                    try:
+                        await interaction.user.add_roles(verified_role)
+                    except discord.Forbidden:
+                        # Log this error if the bot lacks permissions
+                        error_embed = discord.Embed(
+                            title="Error",
+                            description="Missing permissions to assign role.",
+                            color=discord.Color.red(),
+                        )
+                        await log_verification(interaction.client, interaction.guild.id, error_embed)
                 else:
-                    print(f"Verified role with ID {config.verified_role_id} not found in guild {interaction.guild.id}.")
+                    # Log this error for the admin using an embed in the log channel
+                    error_embed = discord.Embed(
+                        title="Error",
+                        description=f"Role not found: {config.verified_role_id}",
+                        color=discord.Color.red(),
+                    )
+                    await log_verification(interaction.client, interaction.guild.id, error_embed)
 
             # Notify the user
             embed = discord.Embed(
-                title="Verification Successful",
-                description=f"{interaction.user.mention}, you have been verified successfully!",
+                title="Success",
+                description="Verification complete.",
                 color=discord.Color.green(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -141,7 +155,7 @@ class VerificationModal(Modal):
             # Log the verification event
             embed = discord.Embed(
                 title="User Verified",
-                description=f"{interaction.user.mention} has been verified.",
+                description=f"{interaction.user.mention}",
                 color=discord.Color.green(),
             )
             embed.add_field(name="User ID", value=interaction.user.id, inline=True)
@@ -153,16 +167,16 @@ class VerificationModal(Modal):
             await log_verification(interaction.client, interaction.guild.id, embed)
         except ValueError:
             embed = discord.Embed(
-                title="Invalid Date",
-                description="Please ensure all fields are filled correctly.",
+                title="Error",
+                description="Invalid date format.",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except Exception as e:
-            print(f"Error in modal submission: {e}")
+            # Create an error embed for both user and logging
             embed = discord.Embed(
                 title="Error",
-                description="An error occurred. Please try again later.",
+                description="Verification failed.",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -173,23 +187,31 @@ class DynamicVerificationButton(Button):
 
     async def callback(self, interaction: discord.Interaction):
         try:
-            print(f"Button clicked by {interaction.user} (ID: {interaction.user.id})")
             # Fetch the current configuration
             config = await get_config(interaction.guild.id)
             if not config:
-                print("Configuration not found for the guild.")
+                embed = discord.Embed(
+                    title="Error",
+                    description="Server not configured.",
+                    color=discord.Color.red(),
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
             elif not config.verified_role_id:
-                print("Verified role ID not configured.")
-            else:
-                print("Configuration and verified role ID found.")
+                embed = discord.Embed(
+                    title="Error",
+                    description="Role not configured.",
+                    color=discord.Color.red(),
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
 
             # Check if user is already verified
             existing_user = await get_user_verification(str(interaction.user.id))
             if existing_user:
-                print(f"User {interaction.user.id} is already verified.")
                 embed = discord.Embed(
-                    title="Already Verified",
-                    description="You are already verified.",
+                    title="Notice",
+                    description="Already verified.",
                     color=discord.Color.blue(),
                 )
                 await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -201,7 +223,7 @@ class DynamicVerificationButton(Button):
             print(f"Error in button callback: {e}")
             embed = discord.Embed(
                 title="Error",
-                description="An error occurred during verification. Please try again later.",
+                description="Verification failed.",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -287,6 +309,9 @@ class ConfigCommands(commands.Cog):
             bot.add_view(view)  # Register the persistent view globally
         print("Persistent self-role views registered.")
 
+        # Initialize the moderation database
+        await init_moderation_db()
+
     @discord.app_commands.command(name="set_channels", description="Set the verification, log channels, and verified role for the server.")
     @discord.app_commands.describe(
         verification_channel="The channel for verification messages",
@@ -308,8 +333,8 @@ class ConfigCommands(commands.Cog):
 
         # Create an embed for the success response
         embed = discord.Embed(
-            title="Configuration Updated",
-            description="The server configuration has been updated successfully.",
+            title="Success",
+            description="Configuration updated.",
             color=discord.Color.green(),
         )
         embed.add_field(name="Verification Channel", value=verification_channel.mention, inline=False)
@@ -325,12 +350,36 @@ class ConfigCommands(commands.Cog):
         """Slash command to send the verification button."""
         await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
         config = await get_config(interaction.guild.id)
+        if not config:
+            embed = discord.Embed(
+                title="Error",
+                description="Server not configured.",
+                color=discord.Color.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        if not config.verification_channel_id:
+            embed = discord.Embed(
+                title="Error",
+                description="Verification channel not set.",
+                color=discord.Color.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
         channel = self.bot.get_channel(config.verification_channel_id)
+        if not channel:
+            embed = discord.Embed(
+                title="Error",
+                description="Verification channel not found.",
+                color=discord.Color.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
 
         # Create an embed for the verification message
         embed = discord.Embed(
-            title="Age Verification Required",
-            description="In order to access the server you must verify your age in accordance with the server rules.",
+            title="Age Verification",
+            description="Verify your age to access this server.",
             color=discord.Color.blue(),
         )
         embed.add_field(
@@ -345,8 +394,8 @@ class ConfigCommands(commands.Cog):
 
         await channel.send(embed=embed, view=view)
         embed = discord.Embed(
-            title="Verification Button Sent",
-            description="The verification button has been sent successfully.",
+            title="Success",
+            description="Verification button sent.",
             color=discord.Color.green(),
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -373,9 +422,20 @@ class ConfigCommands(commands.Cog):
                 role_removed = False
                 if config and config.verified_role_id:
                     verified_role = interaction.guild.get_role(config.verified_role_id)
-                    if verified_role and verified_role in user.roles:
-                        await user.remove_roles(verified_role)
-                        role_removed = True
+                    if verified_role:
+                        member = interaction.guild.get_member(user.id)
+                        if member and verified_role in member.roles:
+                            try:
+                                await member.remove_roles(verified_role)
+                                role_removed = True
+                            except discord.Forbidden:
+                                # Log the error but continue with the verification removal
+                                error_embed = discord.Embed(
+                                    title="Error",
+                                    description="Missing permissions to remove role.",
+                                    color=discord.Color.red(),
+                                )
+                                await log_verification(interaction.client, interaction.guild.id, error_embed)
 
                 # Log the action (orange embed for the log channel)
                 log_embed = discord.Embed(
@@ -571,24 +631,24 @@ async def on_command_error(ctx, error):
         if isinstance(error, commands.NotOwner):
             # Handle the NotOwner error
             embed = discord.Embed(
-                title="Permission Denied",
-                description="Error: Only the bot owner can execute this command.",
+                title="Error",
+                description="Bot owner command only.",
                 color=discord.Color.red(),
             )
             await ctx.send(embed=embed)
         elif isinstance(error, commands.MissingPermissions):
             # Handle missing permissions for other commands
             embed = discord.Embed(
-                title="Permission Denied",
-                description="You do not have the required permissions to use this command.",
+                title="Error",
+                description="Insufficient permissions.",
                 color=discord.Color.red(),
             )
             await ctx.send(embed=embed)
         elif isinstance(error, commands.CommandNotFound):
             # Handle unknown commands
             embed = discord.Embed(
-                title="Command Not Found",
-                description="The command you entered does not exist.",
+                title="Error",
+                description="Command not found.",
                 color=discord.Color.orange(),
             )
             await ctx.send(embed=embed)
@@ -596,7 +656,7 @@ async def on_command_error(ctx, error):
             # Handle other errors
             embed = discord.Embed(
                 title="Error",
-                description="An unexpected error occurred. Please try again later.",
+                description="Command failed. Try again later.",
                 color=discord.Color.red(),
             )
             await ctx.send(embed=embed)
@@ -607,28 +667,28 @@ async def on_command_error(ctx, error):
         if isinstance(error, commands.NotOwner):
             embed = discord.Embed(
                 title="Error",
-                description="Error: This command is for bot owners only.",
+                description="Bot owner command only.",
                 color=discord.Color.red(),
             )
             await ctx.send(embed=embed)
         elif isinstance(error, commands.MissingPermissions):
             embed = discord.Embed(
                 title="Error",
-                description="Error: You do not have the required permissions to use this command.",
+                description="Insufficient permissions.",
                 color=discord.Color.red(),
             )
             await ctx.send(embed=embed)
         elif isinstance(error, commands.CommandNotFound):
             embed = discord.Embed(
                 title="Error",
-                description="Error: The command you entered does not exist.",
+                description="Command not found.",
                 color=discord.Color.red(),
             )
             await ctx.send(embed=embed)
         else:
             embed = discord.Embed(
                 title="Error",
-                description="Error: An unexpected error occurred. Please try again later.",
+                description="Command failed. Try again later.",
                 color=discord.Color.red(),
             )
             await ctx.send(embed=embed)
@@ -646,8 +706,8 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
     if isinstance(error, app_commands.CheckFailure):
         # Handle permission errors
         embed = discord.Embed(
-            title="Permission Denied",
-            description="You do not have permission to use this command.",
+            title="Error",
+            description="Insufficient permissions.",
             color=discord.Color.red(),
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -655,7 +715,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
         # Handle other errors
         embed = discord.Embed(
             title="Error",
-            description="An unexpected error occurred. Please try again later.",
+            description="Command failed. Try again later.",
             color=discord.Color.red(),
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -670,7 +730,9 @@ async def main():
         view = DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
         bot.add_view(view)  # Register the persistent view globally
 
+        await init_db()  # Initialize the verification database
         await init_selfrole_db()  # Initialize the self-role database
+        await init_moderation_db()  # Initialize the moderation database
 
         # Add the ConfigCommands cog
         await bot.add_cog(ConfigCommands(bot))  # Await the cog addition
@@ -679,6 +741,9 @@ async def main():
 
         from modules.selfroles import SelfRoles
         await bot.add_cog(SelfRoles(bot))
+
+        from modules.moderation import Moderation
+        await bot.add_cog(Moderation(bot))
 
         await bot.start(TOKEN)  # Start the bot
 

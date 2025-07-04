@@ -31,29 +31,29 @@ class SelfRoleDropdown(Select):
                 await member.remove_roles(role)
                 embed = discord.Embed(
                     title="Role Removed",
-                    description=f"Removed **{role.name}** from **{member.display_name}**.",
+                    description=f"Removed {role.name}",
                     color=discord.Color.red(),
                 )
             else:
                 # Add the role if the user doesn't have it
                 await member.add_roles(role)
                 embed = discord.Embed(
-                    title="Role Assigned",
-                    description=f"Assigned **{role.name}** to **{member.display_name}**.",
+                    title="Role Added",
+                    description=f"Added {role.name}",
                     color=discord.Color.green(),
                 )
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except discord.Forbidden:
             embed = discord.Embed(
                 title="Error",
-                description="Missing permission: Manage Roles.",
+                description="Missing permission: Manage Roles",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except Exception as e:
             embed = discord.Embed(
                 title="Error",
-                description=f"An unexpected error occurred: {e}",
+                description=f"Unexpected error: {e}",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -120,7 +120,7 @@ class SelfRoles(commands.Cog):
             except ValueError:
                 embed = discord.Embed(
                     title="Error",
-                    description=f"Invalid format for pair: `{pair}`. Use `role_id:label`.",
+                    description="Invalid format: use `role_id:label`",
                     color=discord.Color.red(),
                 )
                 await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -129,7 +129,7 @@ class SelfRoles(commands.Cog):
         if not roles_and_labels_parsed:
             embed = discord.Embed(
                 title="Error",
-                description="No valid roles and labels provided.",
+                description="No valid roles provided",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -147,8 +147,8 @@ class SelfRoles(commands.Cog):
 
         # Notify the user
         embed = discord.Embed(
-            title="Configuration Updated",
-            description=f"The self-roles configuration for `{message_name}` has been updated successfully.",
+            title="Success",
+            description=f"Self-roles updated: {message_name}",
             color=discord.Color.green(),
         )
         for role_id, label in roles_and_labels_parsed.items():
@@ -170,8 +170,8 @@ class SelfRoles(commands.Cog):
         config = await get_selfrole_config(interaction.guild.id, message_name)
         if not config:
             embed = discord.Embed(
-                title="No Configuration Found",
-                description=f"No self-roles configuration found for `{message_name}`. Use `/set_selfroles` to configure roles first.",
+                title="Error",
+                description=f"Configuration not found: {message_name}",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -201,8 +201,8 @@ class SelfRoles(commands.Cog):
 
         # Notify the user that the message was sent
         embed = discord.Embed(
-            title="Message Sent",
-            description=f"The self-roles message `{message_name}` has been sent to {channel.mention}.",
+            title="Success",
+            description=f"Self-roles message sent to {channel.mention}",
             color=discord.Color.green(),
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -220,8 +220,8 @@ class SelfRoles(commands.Cog):
         config = await get_selfrole_config(interaction.guild.id, message_name)
         if not config:
             embed = discord.Embed(
-                title="No Configuration Found",
-                description=f"No self-roles configuration found for `{message_name}`.",
+                title="Error",
+                description=f"Configuration not found: {message_name}",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -232,8 +232,8 @@ class SelfRoles(commands.Cog):
 
         # Notify the user
         embed = discord.Embed(
-            title="Configuration Deleted",
-            description=f"The self-roles configuration for `{message_name}` has been deleted successfully.",
+            title="Success",
+            description=f"Configuration deleted: {message_name}",
             color=discord.Color.green(),
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -247,8 +247,8 @@ class SelfRoles(commands.Cog):
         configs = await get_all_selfrole_configs(interaction.guild.id)
         if not configs:
             embed = discord.Embed(
-                title="No Configurations Found",
-                description="No self-role configurations have been set for this server.",
+                title="Notice",
+                description="No self-role configurations exist",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -259,7 +259,7 @@ class SelfRoles(commands.Cog):
 
         embed = discord.Embed(
             title="Self-Role Configurations",
-            description="Here is a list of all self-role messages configured for this server:\n\n" + message_names,
+            description=message_names,
             color=discord.Color.blue(),
         )
 
@@ -275,8 +275,8 @@ class SelfRoles(commands.Cog):
         config = await get_selfrole_config(interaction.guild.id, message_name)
         if not config:
             embed = discord.Embed(
-                title="Configuration Not Found",
-                description=f"No self-roles configuration found for `{message_name}`.",
+                title="Error",
+                description=f"Configuration not found: {message_name}",
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -289,8 +289,8 @@ class SelfRoles(commands.Cog):
         )
 
         embed = discord.Embed(
-            title=f"Self-Roles Configuration: `{message_name}`",
-            description="Here are the details of the self-role configuration:",
+            title=f"Configuration: {message_name}",
+            description="Configuration details:",
             color=discord.Color.blue(),
         )
         embed.add_field(name="Embed Title", value=config.embed_title, inline=False)

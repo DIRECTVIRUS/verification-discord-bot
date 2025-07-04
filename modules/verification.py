@@ -34,6 +34,7 @@ class Config(Base):
     log_channel_id = Column(BigInteger, nullable=True)
     verified_role_id = Column(BigInteger, nullable=True)
 
+    
 async def init_db():
     """Initialize the database."""
     async with engine.begin() as conn:
