@@ -121,7 +121,7 @@ A Discord bot designed to handle user verification, self-assignable roles, and l
 - `l!sync`: Sync slash commands globally (owner only).
 - `l!restart`: Restart the bot (owner only).
 
-### **Note**: restart will not restart the bot unless you have a process manager like pm2 or systemd to run the bot.py file when the process is killed. an example unit file for systemd is provided in the [docs](docs/systemd.md) folder, however you can use any process manager you like.
+### **Note**: restart command will not restart the bot unless you have a process manager like pm2 or systemd to run the bot.py file when the process is killed. an example unit file for systemd is provided in the [docs](docs/systemd.md) folder, however you can use any process manager you like.
 
 
 ## license
