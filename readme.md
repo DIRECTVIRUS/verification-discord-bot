@@ -104,11 +104,19 @@ A Discord bot designed to handle user verification, self-assignable roles, and l
 
 ### Slash Commands
 
-- `/set_channels`: Configure the verification channel, log channel, and verified role.
+- `/config`: Configure all server settings (verification and moderation channels/roles). Call without parameters to view current configuration.
 - `/send_verification`: Send the verification button in the configured channel.
 - `/clear_verification`: Clear a user's verification record.
 - `/check_verification`: Check the verification status of a user.
-- `/show_verification_config`: Show the current verification configuration.
+- `/ban`: Ban a member with a reason.
+- `/kick`: Kick a member with a reason.
+- `/unban`: Unban a user by their user ID.
+- `/warn`: Warn a member (3 warnings = automatic ban).
+- `/unwarn`: Remove a warning by warning ID.
+- `/warnings`: List all warnings for a member.
+- `/remove_warning`: Remove a specific warning from a member.
+- `/clearwarnings`: Clear all warnings for a member.
+- `/clearwarnings_id`: Clear all warnings for a user by their user ID.
 - `/set_selfroles`: Configure self-assignable roles for the server.
 - `/send_selfroles`: Send the self-roles message in a specified channel.
 - `/delete_selfroles`: Delete a self-roles configuration.

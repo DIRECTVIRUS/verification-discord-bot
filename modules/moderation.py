@@ -1,7 +1,10 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from modules.moderation_db import set_moderation_log_channel, add_warning, get_user_warnings, get_warning_by_id, remove_warning, clear_user_warnings, get_moderation_config
+from modules.moderation_db import (
+    set_moderation_log_channel, add_warning, get_user_warnings, get_warning_by_id, 
+    remove_warning, clear_user_warnings, get_moderation_config
+)
 from modules import moderation_logging
 
 # Helper function to create admin check
@@ -36,18 +39,6 @@ class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="set_moderation_log_channel", description="Set the moderation log channel.")
-    @app_commands.describe(channel="The channel to log moderation actions.")
-    @is_admin()
-    async def set_moderation_log_channel_cmd(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        await set_moderation_log_channel(interaction.guild.id, channel.id)
-        embed = discord.Embed(
-            title="Success",
-            description=f"Log channel set: {channel.mention}",
-            color=discord.Color.green(),
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
     @app_commands.command(name="ban", description="Ban a member. Requires a reason.")
     @app_commands.describe(member="The member to ban.", reason="The reason for the ban.")
     @is_mod()
@@ -57,6 +48,16 @@ class Moderation(commands.Cog):
             embed = discord.Embed(
                 title="Error",
                 description="Cannot ban yourself",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Check if the bot has ban permission
+        if not interaction.guild.me.guild_permissions.ban_members:
+            embed = discord.Embed(
+                title="Error",
+                description="Bot missing ban permission",
                 color=discord.Color.red()
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -92,7 +93,7 @@ class Moderation(commands.Cog):
                 description=f"You were banned from {interaction.guild.name}",
                 color=discord.Color.red()
             )
-            user_embed.add_field(name="Reason", value=reason, inline=True)
+            user_embed.add_field(name="Reason", value=reason, inline=False)
             await member.send(embed=user_embed)
             dm_sent = True
         except discord.Forbidden:
@@ -134,6 +135,16 @@ class Moderation(commands.Cog):
             embed = discord.Embed(
                 title="Error",
                 description="Cannot kick yourself",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Check if the bot has kick permission
+        if not interaction.guild.me.guild_permissions.kick_members:
+            embed = discord.Embed(
+                title="Error",
+                description="Bot missing kick permission",
                 color=discord.Color.red()
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -201,6 +212,114 @@ class Moderation(commands.Cog):
         
         # Send confirmation to the moderator
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="unban", description="Unban a user by their user ID.")
+    @app_commands.describe(user_id="The user ID of the banned user to unban.", reason="The reason for the unban.")
+    @is_mod()
+    async def unban(self, interaction: discord.Interaction, user_id: str, reason: str = "No reason provided"):
+        # Check if the bot has ban permission
+        if not interaction.guild.me.guild_permissions.ban_members:
+            embed = discord.Embed(
+                title="Error",
+                description="Bot missing ban permission",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Try to convert user_id to int
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            embed = discord.Embed(
+                title="Error",
+                description="Invalid user ID format",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Check if the user is actually banned
+        try:
+            ban_entry = await interaction.guild.fetch_ban(discord.Object(id=user_id_int))
+            banned_user = ban_entry.user
+        except discord.NotFound:
+            embed = discord.Embed(
+                title="Error",
+                description="User is not banned",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        except discord.Forbidden:
+            embed = discord.Embed(
+                title="Error",
+                description="Bot cannot access ban list",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        except Exception as e:
+            embed = discord.Embed(
+                title="Error",
+                description=f"Failed to check ban status: {e}",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Unban the user
+        try:
+            await interaction.guild.unban(banned_user, reason=reason)
+        except discord.Forbidden:
+            embed = discord.Embed(
+                title="Error",
+                description="Bot cannot unban users",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        except Exception as e:
+            embed = discord.Embed(
+                title="Error",
+                description=f"Failed to unban user: {e}",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Create an embed for the unban log
+        embed = discord.Embed(
+            title="Unban",
+            description=f"{banned_user.mention} ({banned_user.name}) unbanned",
+            color=discord.Color.green(),
+        )
+        embed.add_field(name="User ID", value=str(user_id_int), inline=True)
+        embed.add_field(name="By", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Reason", value=reason, inline=True)
+        
+        # Log the unban
+        await moderation_logging.log_moderation_action(self.bot, interaction.guild.id, embed)
+        
+        # Send confirmation to the moderator
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+        # Try to notify the user via DM
+        try:
+            user_embed = discord.Embed(
+                title="Unbanned",
+                description=f"You were unbanned from {interaction.guild.name}",
+                color=discord.Color.green()
+            )
+            user_embed.add_field(name="Reason", value=reason, inline=True)
+            await banned_user.send(embed=user_embed)
+        except discord.Forbidden:
+            # User has DMs disabled
+            pass
+        except Exception as e:
+            # Other errors with sending DM
+            print(f"Error sending DM for unban: {e}")
+            pass
 
     @app_commands.command(name="warn", description="Warn a member. Requires a reason. 3 warnings will result in an automatic ban.")
     @app_commands.describe(member="The member to warn.", reason="The reason for the warning.")
@@ -311,73 +430,89 @@ class Moderation(commands.Cog):
             
         # Auto-ban after 3 warnings
         if warning_count >= 3:
-            try:
-                # Ban the member
-                auto_ban_reason = f"Automatic ban after 3 warnings. Last warning: {reason}"
-                await member.ban(reason=auto_ban_reason)
-                
-                # Track if autoban DM was sent (separate from warning DM)
-                autoban_dm_sent = False
-                
-                # Try to DM the user before banning if not done already
+            # Check if bot has ban permission before attempting auto-ban
+            if not interaction.guild.me.guild_permissions.ban_members:
+                error_embed = discord.Embed(
+                    title="Warning",
+                    description="Auto-ban failed: bot missing ban permission",
+                    color=discord.Color.orange()
+                )
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            elif not interaction.guild.me.top_role > member.top_role:
+                error_embed = discord.Embed(
+                    title="Warning",
+                    description="Auto-ban failed: target has higher role than bot",
+                    color=discord.Color.orange()
+                )
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            else:
                 try:
-                    ban_embed = discord.Embed(
-                        title=f"Auto-Ban",
-                        description=f"Banned from {interaction.guild.name}: 3 warnings reached",
-                        color=discord.Color.red()
+                    # Track if autoban DM was sent (separate from warning DM)
+                    autoban_dm_sent = False
+                    
+                    # Try to DM the user BEFORE banning
+                    auto_ban_reason = f"Automatic ban after 3 warnings. Last warning: {reason}"
+                    try:
+                        ban_embed = discord.Embed(
+                            title=f"Auto-Ban",
+                            description=f"Banned from {interaction.guild.name}: 3 warnings reached",
+                            color=discord.Color.red()
+                        )
+                        ban_embed.add_field(name="Reason", value=auto_ban_reason, inline=False)
+                        await member.send(embed=ban_embed)
+                        autoban_dm_sent = True
+                    except discord.Forbidden:
+                        # User has DMs disabled
+                        pass
+                    except Exception as e:
+                        # Other errors with sending DM
+                        print(f"Error sending autoban DM: {e}")
+                        pass
+                    
+                    # Now ban the member
+                    await member.ban(reason=auto_ban_reason)
+                    
+                    # Create an embed for the auto-ban log
+                    autoban_embed = discord.Embed(
+                        title="Auto-Ban",
+                        description=f"{member.mention}: 3 warnings reached",
+                        color=discord.Color.red(),
                     )
-                    ban_embed.add_field(name="Reason", value=reason, inline=True)
-                    await member.send(ban_embed)
-                    autoban_dm_sent = True
+                    autoban_embed.add_field(name="Reason", value=auto_ban_reason, inline=True)
+                    autoban_embed.add_field(name="Mod", value=interaction.user.mention, inline=True)
+                    
+                    # Add field indicating if user was notified about the auto-ban
+                    if not dm_sent and not autoban_dm_sent:
+                        autoban_embed.add_field(name="Notice", value="User could not be notified via DM", inline=False)
+                    
+                    # Log the ban
+                    await moderation_logging.log_moderation_action(self.bot, interaction.guild.id, autoban_embed)
+                    
+                    # Notify the moderator
+                    autoban_mod_embed = discord.Embed(
+                        title="Auto-Ban",
+                        description=f"{member.mention} banned: 3 warnings",
+                        color=discord.Color.red(),
+                    )
+                    autoban_mod_embed.add_field(name="Warning ID", value=f"#{warning_id}", inline=True)
+                    await interaction.followup.send(embed=autoban_mod_embed, ephemeral=True)
                 except discord.Forbidden:
-                    # User has DMs disabled or already messaged above
-                    pass
+                    # Bot doesn't have permission to ban
+                    error_embed = discord.Embed(
+                        title="Error",
+                        description="Cannot auto-ban: missing permissions",
+                        color=discord.Color.red(),
+                    )
+                    await interaction.followup.send(embed=error_embed, ephemeral=True)
                 except Exception as e:
-                    # Other errors with sending DM
-                    print(f"Error sending autoban DM: {e}")
-                    pass
-                
-                # Create an embed for the auto-ban log
-                autoban_embed = discord.Embed(
-                    title="Auto-Ban",
-                    description=f"{member.mention}: 3 warnings reached",
-                    color=discord.Color.red(),
-                )
-                autoban_embed.add_field(name="Reason", value=auto_ban_reason, inline=True)
-                autoban_embed.add_field(name="Mod", value=interaction.user.mention, inline=True)
-                
-                # Add field indicating if user was notified about the auto-ban
-                if not dm_sent and not autoban_dm_sent:
-                    autoban_embed.add_field(name="Notice", value="User could not be notified via DM", inline=False)
-                
-                # Log the ban
-                await moderation_logging.log_moderation_action(self.bot, interaction.guild.id, autoban_embed)
-                
-                # Notify the moderator
-                autoban_mod_embed = discord.Embed(
-                    title="Auto-Ban",
-                    description=f"{member.mention} banned: 3 warnings",
-                    color=discord.Color.red(),
-                )
-                autoban_mod_embed.add_field(name="Warning ID", value=f"#{warning_id}", inline=True)
-                await interaction.followup.send(embed=autoban_mod_embed, ephemeral=True)
-            except discord.Forbidden:
-                # Bot doesn't have permission to ban
-                error_embed = discord.Embed(
-                    title="Error",
-                    description="Cannot auto-ban: missing permissions",
-                    color=discord.Color.red(),
-                )
-                await interaction.followup.send(embed=error_embed, ephemeral=True)
-            except Exception as e:
-                # Log any other errors
-                print(f"Auto-ban error: {e}")
-                error_embed = discord.Embed(
-                    title="Error",
-                    description=f"Auto-ban failed: {e}",
-                    color=discord.Color.red(),
-                )
-                await interaction.followup.send(embed=error_embed, ephemeral=True)
+                    # Log any other errors
+                    print(f"Auto-ban error: {e}")
+                    error_embed = discord.Embed(
+                        title="Error",
+                        description=f"Auto-ban failed: {e}",
+                        color=discord.Color.red(),
+                    )
+                    await interaction.followup.send(embed=error_embed, ephemeral=True)
 
     @app_commands.command(name="warnings", description="List all warnings for a member. Staff only.")
     @app_commands.describe(member="The member to check warnings for.")
@@ -423,10 +558,15 @@ class Moderation(commands.Cog):
             return
         
         # Get the warning from the database
-        warning = await get_warning_by_id(interaction.guild.id, warning_id)
+        warning = await get_warning_by_id(warning_id)
         
         if not warning:
             await interaction.response.send_message("Warning not found.", ephemeral=True)
+            return
+        
+        # Check if the warning belongs to this guild
+        if warning.guild_id != interaction.guild.id:
+            await interaction.response.send_message("Warning not from this server.", ephemeral=True)
             return
         
         # Check if the warning belongs to the member
@@ -435,7 +575,7 @@ class Moderation(commands.Cog):
             return
         
         # Remove the warning
-        await remove_warning(interaction.guild.id, warning_id)
+        await remove_warning(warning_id)
         
         # Create an embed for the warning removal log
         embed = discord.Embed(
@@ -505,9 +645,6 @@ class Moderation(commands.Cog):
                     value="Auto-ban prevented", 
                     inline=False
                 )
-            
-            # Log the action
-            await moderation_logging.log_moderation_action(self.bot, interaction.guild.id, log_embed)
             
             # Create a copy for the moderator without the moderator field
             mod_embed = discord.Embed(
@@ -590,9 +727,6 @@ class Moderation(commands.Cog):
                     inline=True
                 )
             
-            # Log the action
-            await moderation_logging.log_moderation_action(self.bot, interaction.guild.id, log_embed)
-            
             # Notify the moderator
             await interaction.response.send_message(
                 embed=log_embed,
@@ -632,46 +766,91 @@ class Moderation(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="show_moderation_config", description="Show the current moderation configuration for the server.")
+    @app_commands.command(name="clearwarnings_id", description="Clear all warnings for a user by their user ID.")
+    @app_commands.describe(user_id="The user ID of the user to clear warnings for.")
     @is_mod()
-    async def show_moderation_config(self, interaction: discord.Interaction):
-        """Slash command to show the current moderation configuration for the server."""
-        await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
-
-        # Fetch the configuration for the guild
-        config = await get_moderation_config(interaction.guild.id)
-
-        # Create an embed to display the configuration
-        embed = discord.Embed(
-            title="Mod Config",
-            description="Server moderation settings",
-            color=discord.Color.blue(),
-        )
-        
-        # Add log channel info
-        if config and config.log_channel_id:
-            embed.add_field(
-                name="Log Channel",
-                value=f"<#{config.log_channel_id}>",
-                inline=True,
+    async def clearwarnings_id(self, interaction: discord.Interaction, user_id: str):
+        # Try to convert user_id to int
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            embed = discord.Embed(
+                title="Error",
+                description="Invalid user ID format",
+                color=discord.Color.red()
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Get warnings count before clearing
+        count = await clear_user_warnings(interaction.guild.id, user_id_int)
+        
+        if count > 0:
+            # Try to fetch user info
+            try:
+                user = await interaction.client.fetch_user(user_id_int)
+                user_mention = user.mention if user else f"<@{user_id_int}>"
+                user_name = user.name if user else f"User ID: {user_id_int}"
+            except:
+                user = None
+                user_mention = f"<@{user_id_int}>"
+                user_name = f"User ID: {user_id_int}"
+            
+            # Create embed for the log
+            log_embed = discord.Embed(
+                title="Warnings Cleared",
+                description=f"{user_mention}: {count} warnings removed",
+                color=discord.Color.green(),
+            )
+            log_embed.add_field(name="User ID", value=str(user_id_int), inline=True)
+            log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+            
+            if count >= 3:
+                log_embed.add_field(
+                    name="Note", 
+                    value="Auto-ban prevented", 
+                    inline=False
+                )
+            
+            # Notify the moderator
+            await interaction.response.send_message(
+                embed=log_embed,
+                ephemeral=True
+            )
+            
+            # Track if we successfully notified the user
+            dm_sent = False
+            
+            # Try to notify the user if we have a user object
+            if user:
+                try:
+                    user_embed = discord.Embed(
+                        title=f"Warnings Cleared",
+                        description=f"{count} warnings removed in {interaction.guild.name}",
+                        color=discord.Color.green()
+                    )
+                    await user.send(embed=user_embed)
+                    dm_sent = True
+                except discord.Forbidden:
+                    # User has DMs disabled
+                    pass
+                except Exception as e:
+                    print(f"Error sending warning clear DM: {e}")
+                    pass
+            
+            # Add a field to the log indicating whether DM was sent
+            if not dm_sent and user:
+                log_embed.add_field(name="Notice", value="User could not be notified via DM", inline=False)
+                
+            # Update the log
+            await moderation_logging.log_moderation_action(self.bot, interaction.guild.id, log_embed)
         else:
-            embed.add_field(
-                name="Log Channel",
-                value="Not Set - Use `/set_moderation_log_channel`",
-                inline=True,
+            embed = discord.Embed(
+                title="Notice",
+                description=f"No warnings found for user ID {user_id_int}",
+                color=discord.Color.blue(),
             )
-        
-        # Add auto-ban rules
-        embed.add_field(
-            name="Auto-Ban",
-            value="3 warnings = ban",
-            inline=True,
-        )
-
-        # Send the embed as a response
-        await interaction.followup.send(embed=embed, ephemeral=True)
-    
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
         
 async def setup(bot):

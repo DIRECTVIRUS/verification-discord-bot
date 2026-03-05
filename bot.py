@@ -8,7 +8,7 @@ from modules.verification import init_db, get_config, set_config, get_user_verif
 from modules.logging import log_verification
 from modules.selfroles_db import selfrole_session, SelfRoleConfig, init_selfrole_db
 from modules.selfroles import SelfRolesView
-from modules.moderation_db import init_moderation_db
+from modules.moderation_db import init_moderation_db, get_moderation_config, set_moderation_log_channel
 from sqlalchemy.future import select
 from discord import app_commands
 import json
@@ -120,6 +120,10 @@ class VerificationModal(Modal):
             # Add the user to the verification database
             await add_user_verification(str(interaction.user.id), interaction.user.name, birthdate=birthdate)
 
+            # Track role assignment status
+            role_assigned = False
+            role_error = None
+            
             # Assign the verified role
             config = await get_config(interaction.guild.id)
             if config and config.verified_role_id:
@@ -127,7 +131,9 @@ class VerificationModal(Modal):
                 if verified_role:
                     try:
                         await interaction.user.add_roles(verified_role)
+                        role_assigned = True
                     except discord.Forbidden:
+                        role_error = "Bot missing permissions to assign role"
                         # Log this error if the bot lacks permissions
                         error_embed = discord.Embed(
                             title="Error",
@@ -136,6 +142,7 @@ class VerificationModal(Modal):
                         )
                         await log_verification(interaction.client, interaction.guild.id, error_embed)
                 else:
+                    role_error = "Verified role not found"
                     # Log this error for the admin using an embed in the log channel
                     error_embed = discord.Embed(
                         title="Error",
@@ -143,13 +150,22 @@ class VerificationModal(Modal):
                         color=discord.Color.red(),
                     )
                     await log_verification(interaction.client, interaction.guild.id, error_embed)
+            else:
+                role_error = "Server verification not configured"
 
-            # Notify the user
-            embed = discord.Embed(
-                title="Success",
-                description="Verification complete.",
-                color=discord.Color.green(),
-            )
+            # Notify the user with appropriate feedback
+            if role_assigned:
+                embed = discord.Embed(
+                    title="Success",
+                    description="Verification complete.",
+                    color=discord.Color.green(),
+                )
+            else:
+                embed = discord.Embed(
+                    title="Verification Incomplete",
+                    description=f"Your age was verified, but role assignment failed.\n\n**Issue:** {role_error}\n\nPlease contact a server administrator.",
+                    color=discord.Color.orange(),
+                )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
             # Log the verification event
@@ -300,47 +316,139 @@ class ConfigCommands(commands.Cog):
             configs = result.scalars().all()
 
         for config in configs:
+            guild = bot.get_guild(config.guild_id)
+            if not guild:
+                print(f"Skipping self-role config for guild {config.guild_id}: guild not found")
+                continue
+                
             roles_and_labels = json.loads(config.roles_and_labels)
-            roles_and_labels_parsed = [
-                (bot.get_guild(config.guild_id).get_role(int(role_id)), label)
-                for role_id, label in roles_and_labels.items()
-            ]
-            view = SelfRolesView(roles_and_labels_parsed)
-            bot.add_view(view)  # Register the persistent view globally
+            roles_and_labels_parsed = []
+            
+            for role_id, label in roles_and_labels.items():
+                role = guild.get_role(int(role_id))
+                if role:
+                    roles_and_labels_parsed.append((role, label))
+                else:
+                    print(f"Skipping role {role_id} in guild {config.guild_id}: role not found")
+            
+            if roles_and_labels_parsed:
+                view = SelfRolesView(roles_and_labels_parsed)
+                bot.add_view(view)  # Register the persistent view globally
+            else:
+                print(f"Skipping self-role config {config.message_name} for guild {config.guild_id}: no valid roles")
         print("Persistent self-role views registered.")
 
         # Initialize the moderation database
         await init_moderation_db()
 
-    @discord.app_commands.command(name="set_channels", description="Set the verification, log channels, and verified role for the server.")
+    @discord.app_commands.command(name="config", description="Configure server settings (verification and moderation).")
     @discord.app_commands.describe(
-        verification_channel="The channel for verification messages",
-        log_channel="The channel for logging verification events",
-        verified_role="The role to assign to verified users"
+        verification_channel="Channel for verification messages",
+        verification_log="Channel for verification event logs",
+        verified_role="Role to assign to verified users",
+        moderation_log="Channel for moderation action logs"
     )
     @is_admin()
     @is_guild_context()
-    async def set_channels(self, interaction: discord.Interaction, verification_channel: discord.TextChannel, log_channel: discord.TextChannel, verified_role: discord.Role):
-        """Slash command to set the verification and log channels, and the verified role."""
-        await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
-        await set_config(interaction.guild.id, verification_channel.id, log_channel.id, verified_role.id)
-
-        # Create or update the dynamic view
-        custom_id = f"verify_button_{interaction.guild.id}"
-        view = DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
-        dynamic_views[custom_id] = view  # Track the view globally
-        self.bot.add_view(view)  # Re-register the view
-
-        # Create an embed for the success response
+    async def config_cmd(
+        self,
+        interaction: discord.Interaction,
+        verification_channel: discord.TextChannel = None,
+        verification_log: discord.TextChannel = None,
+        verified_role: discord.Role = None,
+        moderation_log: discord.TextChannel = None
+    ):
+        """Unified configuration command for all server settings."""
+        await interaction.response.defer(ephemeral=True)
+        
+        # Check if any parameters were provided
+        if not any([verification_channel, verification_log, verified_role, moderation_log]):
+            # No parameters provided, show current config
+            embed = discord.Embed(
+                title="Server Configuration",
+                description="Use `/config` with parameters to update settings.",
+                color=discord.Color.blue()
+            )
+            
+            # Get verification config
+            verif_config = await get_config(interaction.guild.id)
+            if verif_config:
+                embed.add_field(
+                    name="🔐 Verification Channel",
+                    value=f"<#{verif_config.verification_channel_id}>" if verif_config.verification_channel_id else "Not Set",
+                    inline=True
+                )
+                embed.add_field(
+                    name="📋 Verification Log",
+                    value=f"<#{verif_config.log_channel_id}>" if verif_config.log_channel_id else "Not Set",
+                    inline=True
+                )
+                embed.add_field(
+                    name="✅ Verified Role",
+                    value=f"<@&{verif_config.verified_role_id}>" if verif_config.verified_role_id else "Not Set",
+                    inline=True
+                )
+            else:
+                embed.add_field(name="🔐 Verification", value="Not configured", inline=False)
+            
+            # Get moderation config
+            mod_config = await get_moderation_config(interaction.guild.id)
+            if mod_config:
+                embed.add_field(
+                    name="🛡️ Moderation Log",
+                    value=f"<#{mod_config.log_channel_id}>" if mod_config.log_channel_id else "Not Set",
+                    inline=True
+                )
+            else:
+                embed.add_field(name="🛡️ Moderation", value="Not configured", inline=False)
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Track what was updated
+        updates = []
+        
+        # Update verification settings
+        if verification_channel or verification_log or verified_role:
+            verif_config = await get_config(interaction.guild.id)
+            
+            # Use existing values or new ones
+            new_verif_channel = verification_channel.id if verification_channel else (verif_config.verification_channel_id if verif_config else None)
+            new_verif_log = verification_log.id if verification_log else (verif_config.log_channel_id if verif_config else None)
+            new_verif_role = verified_role.id if verified_role else (verif_config.verified_role_id if verif_config else None)
+            
+            # Only update if at least one verification setting is provided or exists
+            if new_verif_channel or new_verif_log or new_verif_role:
+                await set_config(interaction.guild.id, new_verif_channel, new_verif_log, new_verif_role)
+                
+                if verification_channel:
+                    updates.append(f"🔐 Verification Channel: {verification_channel.mention}")
+                    # Update verification button view
+                    custom_id = f"verify_button_{interaction.guild.id}"
+                    view = DynamicVerificationView(label="Verify", style=discord.ButtonStyle.green, custom_id=custom_id)
+                    dynamic_views[custom_id] = view
+                    self.bot.add_view(view)
+                
+                if verification_log:
+                    updates.append(f"📋 Verification Log: {verification_log.mention}")
+                if verified_role:
+                    updates.append(f"✅ Verified Role: {verified_role.mention}")
+        
+        # Update moderation settings
+        if moderation_log:
+            await set_moderation_log_channel(interaction.guild.id, moderation_log.id)
+            updates.append(f"🛡️ Moderation Log: {moderation_log.mention}")
+        
+        # Send success message
         embed = discord.Embed(
-            title="Success",
-            description="Configuration updated.",
-            color=discord.Color.green(),
+            title="✅ Configuration Updated",
+            description="The following settings were updated:",
+            color=discord.Color.green()
         )
-        embed.add_field(name="Verification Channel", value=verification_channel.mention, inline=False)
-        embed.add_field(name="Log Channel", value=log_channel.mention, inline=False)
-        embed.add_field(name="Verified Role", value=verified_role.mention, inline=False)
-
+        
+        for update in updates:
+            embed.add_field(name=update.split(":")[0], value=update.split(": ")[1], inline=True)
+        
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.app_commands.command(name="send_verification", description="Send the verification button in the configured channel.")
@@ -516,50 +624,6 @@ class ConfigCommands(commands.Cog):
                 embed.set_thumbnail(url=user.display_avatar.url)
 
                 await interaction.followup.send(embed=embed, ephemeral=True)
-
-    @discord.app_commands.command(name="show_verification_config", description="Show the current verification configuration for the server.")
-    @is_admin()
-    @is_guild_context()
-    async def show_verification_config(self, interaction: discord.Interaction):
-        """Slash command to show the current verification configuration for the server."""
-        await interaction.response.defer(ephemeral=True)  # Defer the response to avoid timeouts
-
-        # Fetch the configuration for the guild
-        config = await get_config(interaction.guild.id)
-        if not config:
-            # If no configuration exists, notify the user
-            embed = discord.Embed(
-                title="No Configuration Found",
-                description="No verification configuration has been set for this server.",
-                color=discord.Color.red(),
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        # Create an embed to display the configuration
-        embed = discord.Embed(
-            title="Verification Configuration",
-            description="Here is the current verification configuration for this server:",
-            color=discord.Color.blue(),
-        )
-        embed.add_field(
-            name="Verification Channel",
-            value=f"<#{config.verification_channel_id}>" if config.verification_channel_id else "Not Set",
-            inline=False,
-        )
-        embed.add_field(
-            name="Log Channel",
-            value=f"<#{config.log_channel_id}>" if config.log_channel_id else "Not Set",
-            inline=False,
-        )
-        embed.add_field(
-            name="Verified Role",
-            value=f"<@&{config.verified_role_id}>" if config.verified_role_id else "Not Set",
-            inline=False,
-        )
-
-        # Send the embed as a response
-        await interaction.followup.send(embed=embed, ephemeral=True)
 
 @bot.command(name="sync", description="Sync slash commands to Discord globally.")
 @commands.is_owner()

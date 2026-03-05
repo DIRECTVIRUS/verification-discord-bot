@@ -23,7 +23,7 @@ class Verification(Base):
     user_id = Column(String, unique=True, nullable=False)
     username = Column(String, nullable=False)
     verified = Column(Boolean, default=False)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     birthdate = Column(Date, nullable=True)  # Added birthdate column
 
 class Config(Base):
@@ -82,7 +82,7 @@ async def add_user_verification(user_id: str, username: str, birthdate: datetime
             user_id=user_id,
             username=username,
             verified=True,
-            timestamp=datetime.datetime.utcnow(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
             birthdate=birthdate,  # Save the birthdate
         )
         session.add(new_verification)

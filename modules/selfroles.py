@@ -25,6 +25,16 @@ class SelfRoleDropdown(Select):
         role = interaction.guild.get_role(selected_role_id)
         member = interaction.user
 
+        # Check if role still exists
+        if not role:
+            embed = discord.Embed(
+                title="Error",
+                description="Role no longer exists. Please contact an administrator.",
+                color=discord.Color.red(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
         try:
             if role in member.roles:
                 # Remove the role if the user already has it
@@ -73,19 +83,30 @@ class SelfRoles(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         """Register persistent views for self-roles on bot startup."""
-        print("Registering persistent self-role views...")
-        configs = await get_all_selfrole_configs(self.bot.user.id)  # Fetch all self-role configurations
-        for config in configs:
-            roles_and_labels = json.loads(config.roles_and_labels)
-            roles_and_labels_parsed = [
-                (self.bot.get_guild(config.guild_id).get_role(int(role_id)), label)
-                for role_id, label in roles_and_labels.items()
-            ]
-
-            # Create the view and register it globally
-            view = SelfRolesView(roles_and_labels_parsed)
-            self.bot.add_view(view)  # Register the persistent view globally
-            print(f"Registered persistent view for message: {config.message_name}")
+        print("SelfRoles Cog: Registering persistent views...")
+        
+        # Get all guilds the bot is in
+        for guild in self.bot.guilds:
+            configs = await get_all_selfrole_configs(guild.id)
+            
+            for config in configs:
+                roles_and_labels = json.loads(config.roles_and_labels)
+                roles_and_labels_parsed = []
+                
+                for role_id, label in roles_and_labels.items():
+                    role = guild.get_role(int(role_id))
+                    if role:
+                        roles_and_labels_parsed.append((role, label))
+                    else:
+                        print(f"SelfRoles Cog: Skipping deleted role {role_id} in {config.message_name}")
+                
+                if roles_and_labels_parsed:
+                    # Create the view and register it globally
+                    view = SelfRolesView(roles_and_labels_parsed)
+                    self.bot.add_view(view)  # Register the persistent view globally
+                    print(f"SelfRoles Cog: Registered view for {config.message_name} in guild {guild.name}")
+                else:
+                    print(f"SelfRoles Cog: No valid roles for {config.message_name} in guild {guild.name}")
 
     @app_commands.command(name="set_selfroles", description="Configure self-assignable roles for the server.")
     @app_commands.describe(
@@ -153,7 +174,8 @@ class SelfRoles(commands.Cog):
         )
         for role_id, label in roles_and_labels_parsed.items():
             role = interaction.guild.get_role(int(role_id))
-            embed.add_field(name=label, value=f"Role: {role.mention} (ID: {role.id})", inline=False)
+            if role:
+                embed.add_field(name=label, value=f"Role: {role.mention} (ID: {role.id})", inline=False)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -179,10 +201,25 @@ class SelfRoles(commands.Cog):
 
         # Parse the roles and labels from the configuration
         roles_and_labels = json.loads(config.roles_and_labels)
-        roles_and_labels_parsed = [
-            (interaction.guild.get_role(int(role_id)), label)
-            for role_id, label in roles_and_labels.items()
-        ]
+        roles_and_labels_parsed = []
+        missing_roles = []
+        
+        for role_id, label in roles_and_labels.items():
+            role = interaction.guild.get_role(int(role_id))
+            if role:
+                roles_and_labels_parsed.append((role, label))
+            else:
+                missing_roles.append(f"{label} (ID: {role_id})")
+        
+        # Check if any roles are still valid
+        if not roles_and_labels_parsed:
+            embed = discord.Embed(
+                title="Error",
+                description=f"No valid roles found for {message_name}. All configured roles have been deleted.",
+                color=discord.Color.red(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
 
         # Create the embed for the self-roles message
         embed = discord.Embed(
@@ -192,6 +229,9 @@ class SelfRoles(commands.Cog):
         )
         for role, label in roles_and_labels_parsed:
             embed.add_field(name=label, value=f"Role: {role.mention} (ID: {role.id})", inline=False)
+        
+        if missing_roles:
+            embed.set_footer(text=f"⚠️ Warning: {len(missing_roles)} role(s) no longer exist and were skipped")
 
         # Create the view with the dropdown menu
         view = SelfRolesView(roles_and_labels_parsed)
