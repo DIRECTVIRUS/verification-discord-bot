@@ -20,7 +20,9 @@ A Discord bot designed to handle user verification, self-assignable roles, and l
 
 - **Age Verification**: Users can verify their age using a modal form.
 - **Self-Assignable Roles**: Configure and manage self-assignable roles with dropdown menus.
-- **Logging**: Logs verification events to a designated channel.
+- **Moderation System**: Full suite of moderation commands (ban, kick, warn, unban) with automatic actions.
+- **Audit Log Tracking**: Automatically logs native Discord bans, kicks, and unbans performed outside the bot.
+- **Logging**: Logs verification and moderation events to designated channels.
 - **Persistent Views**: Ensures dropdown menus and buttons persist across bot restarts.
 - **Slash Commands**: Modern and user-friendly slash commands for configuration and management.
 
@@ -74,6 +76,9 @@ A Discord bot designed to handle user verification, self-assignable roles, and l
    - `Manage Roles`
    - `Read Message History`
    - `View Channels`
+   - `View Audit Log` (for tracking native Discord moderation actions)
+   - `Ban Members` (for moderation commands)
+   - `Kick Members` (for moderation commands)
 
    alternatively you can use the following permissions:
    - `Administrator`
