@@ -23,7 +23,6 @@ class ModerationConfig(ModerationBase):
     id = Column(Integer, primary_key=True)
     guild_id = Column(BigInteger, unique=True, nullable=False)
     log_channel_id = Column(BigInteger, nullable=True)
-    appeal_channel_id = Column(BigInteger, nullable=True)
     
     __table_args__ = (
         {"sqlite_autoincrement": True},
@@ -150,25 +149,6 @@ async def clear_user_warnings(guild_id: int, user_id: int):
         
         await session.commit()
         return count
-
-async def set_appeal_channel(guild_id: int, appeal_channel_id: int):
-    """Set or update the appeal channel for a guild."""
-    async with moderation_session() as session:
-        result = await session.execute(
-            select(ModerationConfig).where(ModerationConfig.guild_id == guild_id)
-        )
-        config = result.scalars().first()
-        
-        if config:
-            config.appeal_channel_id = appeal_channel_id
-        else:
-            config = ModerationConfig(
-                guild_id=guild_id,
-                appeal_channel_id=appeal_channel_id
-            )
-            session.add(config)
-            
-        await session.commit()
 
 async def create_appeal(guild_id: int, user_id: int, ban_reason: str, appeal_reason: str, message_id: int = None):
     """Create a new appeal."""
