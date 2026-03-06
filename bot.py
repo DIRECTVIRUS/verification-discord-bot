@@ -26,7 +26,7 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
 intents.message_content = True
-intents.members = True  # Required to manage roles
+intents.members = True  # Required to manage roles and detect member events (ban, kick, unban)
 
 def is_guild_context():
     async def predicate(interaction: discord.Interaction) -> bool:
@@ -808,6 +808,9 @@ async def main():
 
         from modules.moderation import Moderation
         await bot.add_cog(Moderation(bot))
+
+        from modules.audit_logging import AuditLogging
+        await bot.add_cog(AuditLogging(bot))
 
         await bot.start(TOKEN)  # Start the bot
 

@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.future import select
-from sqlalchemy import Column, Integer, String, BigInteger, DateTime
+from sqlalchemy import Column, Integer, String, BigInteger, DateTime, Boolean
 import datetime
 import os
 
@@ -23,7 +23,7 @@ class ModerationConfig(ModerationBase):
     id = Column(Integer, primary_key=True)
     guild_id = Column(BigInteger, unique=True, nullable=False)
     log_channel_id = Column(BigInteger, nullable=True)
-    appeal_channel_id = Column(BigInteger, nullable=True)
+    audit_logging_enabled = Column(Boolean, default=False, nullable=False)
     
     __table_args__ = (
         {"sqlite_autoincrement": True},
@@ -82,6 +82,37 @@ async def set_moderation_log_channel(guild_id: int, log_channel_id: int):
             session.add(config)
             
         await session.commit()
+
+async def set_audit_logging(guild_id: int, enabled: bool):
+    """Enable or disable audit logging for a guild."""
+    async with moderation_session() as session:
+        result = await session.execute(
+            select(ModerationConfig).where(ModerationConfig.guild_id == guild_id)
+        )
+        config = result.scalars().first()
+        
+        if config:
+            config.audit_logging_enabled = enabled
+        else:
+            config = ModerationConfig(
+                guild_id=guild_id,
+                audit_logging_enabled=enabled
+            )
+            session.add(config)
+            
+        await session.commit()
+
+async def is_audit_logging_enabled(guild_id: int) -> bool:
+    """Check if audit logging is enabled for a guild."""
+    async with moderation_session() as session:
+        result = await session.execute(
+            select(ModerationConfig).where(ModerationConfig.guild_id == guild_id)
+        )
+        config = result.scalars().first()
+        
+        if config:
+            return config.audit_logging_enabled
+        return False
 
 async def add_warning(guild_id: int, user_id: int, moderator_id: int, reason: str):
     """Add a new warning record."""
