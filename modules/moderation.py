@@ -3,7 +3,8 @@ from discord.ext import commands
 from discord import app_commands
 from modules.moderation_db import (
     set_moderation_log_channel, add_warning, get_user_warnings, get_warning_by_id, 
-    remove_warning, clear_user_warnings, get_moderation_config
+    remove_warning, clear_user_warnings, get_moderation_config, set_audit_logging, 
+    is_audit_logging_enabled
 )
 from modules import moderation_logging
 
@@ -38,120 +39,6 @@ def is_mod():
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-    @commands.Cog.listener()
-    async def on_member_ban(self, guild: discord.Guild, user: discord.User):
-        """Log bans performed outside the bot (native Discord bans)."""
-        try:
-            # Wait a moment for the audit log to be available
-            await discord.utils.sleep_until(discord.utils.utcnow() + discord.timedelta(seconds=1))
-            
-            # Check if bot has permission to view audit log
-            if not guild.me.guild_permissions.view_audit_log:
-                return
-            
-            # Fetch the most recent ban from audit log
-            async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.ban):
-                if entry.target.id == user.id:
-                    # Check if this ban was done by the bot itself (skip logging if so)
-                    if entry.user.id == self.bot.user.id:
-                        return
-                    
-                    # Create embed for the ban log
-                    embed = discord.Embed(
-                        title="Ban (Native)",
-                        description=f"{user.mention} banned via Discord",
-                        color=discord.Color.red(),
-                    )
-                    embed.add_field(name="User", value=f"{user.name} ({user.id})", inline=True)
-                    embed.add_field(name="By", value=entry.user.mention, inline=True)
-                    embed.add_field(name="Reason", value=entry.reason or "No reason provided", inline=True)
-                    embed.set_thumbnail(url=user.display_avatar.url)
-                    
-                    # Log the ban
-                    await moderation_logging.log_moderation_action(self.bot, guild.id, embed)
-                    break
-        except discord.Forbidden:
-            # Bot doesn't have permission to view audit log
-            pass
-        except Exception as e:
-            print(f"Error logging native ban: {e}")
-
-    @commands.Cog.listener()
-    async def on_member_remove(self, member: discord.Member):
-        """Log kicks performed outside the bot (native Discord kicks)."""
-        try:
-            # Wait a moment for the audit log to be available
-            await discord.utils.sleep_until(discord.utils.utcnow() + discord.timedelta(seconds=1))
-            
-            # Check if bot has permission to view audit log
-            if not member.guild.me.guild_permissions.view_audit_log:
-                return
-            
-            # Fetch the most recent kick from audit log
-            async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.kick):
-                if entry.target.id == member.id:
-                    # Check if this kick was done by the bot itself (skip logging if so)
-                    if entry.user.id == self.bot.user.id:
-                        return
-                    
-                    # Create embed for the kick log
-                    embed = discord.Embed(
-                        title="Kick (Native)",
-                        description=f"{member.mention} kicked via Discord",
-                        color=discord.Color.orange(),
-                    )
-                    embed.add_field(name="User", value=f"{member.name} ({member.id})", inline=True)
-                    embed.add_field(name="By", value=entry.user.mention, inline=True)
-                    embed.add_field(name="Reason", value=entry.reason or "No reason provided", inline=True)
-                    embed.set_thumbnail(url=member.display_avatar.url)
-                    
-                    # Log the kick
-                    await moderation_logging.log_moderation_action(self.bot, member.guild.id, embed)
-                    break
-        except discord.Forbidden:
-            # Bot doesn't have permission to view audit log
-            pass
-        except Exception as e:
-            print(f"Error logging native kick: {e}")
-
-    @commands.Cog.listener()
-    async def on_member_unban(self, guild: discord.Guild, user: discord.User):
-        """Log unbans performed outside the bot (native Discord unbans)."""
-        try:
-            # Wait a moment for the audit log to be available
-            await discord.utils.sleep_until(discord.utils.utcnow() + discord.timedelta(seconds=1))
-            
-            # Check if bot has permission to view audit log
-            if not guild.me.guild_permissions.view_audit_log:
-                return
-            
-            # Fetch the most recent unban from audit log
-            async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.unban):
-                if entry.target.id == user.id:
-                    # Check if this unban was done by the bot itself (skip logging if so)
-                    if entry.user.id == self.bot.user.id:
-                        return
-                    
-                    # Create embed for the unban log
-                    embed = discord.Embed(
-                        title="Unban (Native)",
-                        description=f"{user.mention} unbanned via Discord",
-                        color=discord.Color.green(),
-                    )
-                    embed.add_field(name="User", value=f"{user.name} ({user.id})", inline=True)
-                    embed.add_field(name="By", value=entry.user.mention, inline=True)
-                    embed.add_field(name="Reason", value=entry.reason or "No reason provided", inline=True)
-                    embed.set_thumbnail(url=user.display_avatar.url)
-                    
-                    # Log the unban
-                    await moderation_logging.log_moderation_action(self.bot, guild.id, embed)
-                    break
-        except discord.Forbidden:
-            # Bot doesn't have permission to view audit log
-            pass
-        except Exception as e:
-            print(f"Error logging native unban: {e}")
 
     @app_commands.command(name="ban", description="Ban a member. Requires a reason.")
     @app_commands.describe(member="The member to ban.", reason="The reason for the ban.")
@@ -965,6 +852,54 @@ class Moderation(commands.Cog):
                 color=discord.Color.blue(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="audit_logging", description="Enable or disable audit logging for native Discord moderation actions.")
+    @app_commands.describe(enabled="Enable (True) or disable (False) audit logging.")
+    @is_admin()
+    async def audit_logging_cmd(self, interaction: discord.Interaction, enabled: bool):
+        """Enable or disable audit logging for the server."""
+        await interaction.response.defer(ephemeral=True)
+        
+        # Check if a moderation log channel is configured
+        config = await get_moderation_config(interaction.guild.id)
+        if not config or not config.log_channel_id:
+            embed = discord.Embed(
+                title="Error",
+                description="Please configure a moderation log channel first using `/config`.",
+                color=discord.Color.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Update the audit logging setting
+        await set_audit_logging(interaction.guild.id, enabled)
+        
+        # Create confirmation embed
+        if enabled:
+            embed = discord.Embed(
+                title="✅ Audit Logging Enabled",
+                description="Native Discord bans, kicks, and unbans will now be logged.",
+                color=discord.Color.green(),
+            )
+            embed.add_field(
+                name="Log Channel",
+                value=f"<#{config.log_channel_id}>",
+                inline=True
+            )
+            embed.add_field(
+                name="Tracked Actions",
+                value="• Bans\\n• Kicks\\n• Unbans",
+                inline=True
+            )
+            embed.set_footer(text="Note: Only actions performed outside the bot are logged.")
+        else:
+            embed = discord.Embed(
+                title="🔕 Audit Logging Disabled",
+                description="Native Discord moderation actions will no longer be logged.",
+                color=discord.Color.orange(),
+            )
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
         
 async def setup(bot):

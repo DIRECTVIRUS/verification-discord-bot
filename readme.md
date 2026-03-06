@@ -122,6 +122,7 @@ A Discord bot designed to handle user verification, self-assignable roles, and l
 - `/remove_warning`: Remove a specific warning from a member.
 - `/clearwarnings`: Clear all warnings for a member.
 - `/clearwarnings_id`: Clear all warnings for a user by their user ID.
+- `/audit_logging`: Enable or disable audit logging for native Discord moderation actions (admin only).
 - `/set_selfroles`: Configure self-assignable roles for the server.
 - `/send_selfroles`: Send the self-roles message in a specified channel.
 - `/delete_selfroles`: Delete a self-roles configuration.
