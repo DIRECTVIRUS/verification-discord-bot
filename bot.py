@@ -107,14 +107,37 @@ class VerificationModal(Modal):
                 embed.add_field(name="Username", value=interaction.user.name, inline=True)
                 embed.add_field(name="Birthdate", value=birthdate.strftime("%d-%m-%Y"), inline=True)
                 embed.add_field(name="Age", value=age, inline=True)
-                embed.set_thumbnail(url=interaction.user.avatar.url)
+                embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
                 await log_verification(interaction.client, interaction.guild.id, embed)
 
-                # Notify the user
-                await interaction.response.send_message(
-                    "You must be at least 18 years old to verify.", ephemeral=True
-                )
+                # DM the user before kicking
+                try:
+                    dm_embed = discord.Embed(
+                        title="Verification Failed",
+                        description="You must be at least 18 years old to join this server.",
+                        color=discord.Color.red(),
+                    )
+                    await interaction.user.send(embed=dm_embed)
+                except discord.Forbidden:
+                    # User has DMs disabled, nothing we can do
+                    pass
+
+                # Kick the user
+                try:
+                    member = interaction.guild.get_member(interaction.user.id) or await interaction.guild.fetch_member(interaction.user.id)
+                    await member.kick(reason="Failed age verification: under 18")
+                except discord.Forbidden:
+                    error_embed = discord.Embed(
+                        title="Error",
+                        description="Missing permissions to kick underage user.",
+                        color=discord.Color.red(),
+                    )
+                    await log_verification(interaction.client, interaction.guild.id, error_embed)
+                except discord.NotFound:
+                    # User already left / not found
+                    pass
+
                 return
 
             # Add the user to the verification database
