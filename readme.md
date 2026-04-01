@@ -96,7 +96,7 @@ A Discord bot designed to handle user verification, self-assignable roles, and l
    ```
 3. The bot should now be online in your server.
 4. as the owner do l!sync to sync the slash commands with discord.
-5. You can now use the bot's commands and features. (a restart of your client to see the slash commands)
+5. You can now use the bot's commands and features. (a restart of your client (ctrl+R) will be required to see the slash commands)
 
 ## modules
 - verification.py: Handles user verification, including age verification and logging.
