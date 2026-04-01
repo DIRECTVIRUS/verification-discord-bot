@@ -35,7 +35,8 @@ A Discord bot designed to handle user verification, self-assignable roles, and l
     1. Go to the [Discord Developer Portal](https://discord.com/developers/applications).
     2. Click on "New Application" and give it a name.
     3. Navigate to the "Bot" tab, click "Add Bot," and confirm.
-    4. Under the "Bot" section, copy the token. **Keep this token private!**
+    4. Under the "Bot" section, enable "Presence Intent," "Server Members Intent," and "Message Content Intent."
+    5. Under the "Bot" section, copy the token. **Keep this token private!** Discord will only let you see it once, so make sure to copy it and store it securely.
 - Required Python packages (see `requirements.txt`)
 
 ### Installation
@@ -122,7 +123,7 @@ A Discord bot designed to handle user verification, self-assignable roles, and l
 - `/remove_warning`: Remove a specific warning from a member.
 - `/clearwarnings`: Clear all warnings for a member.
 - `/clearwarnings_id`: Clear all warnings for a user by their user ID.
-- `/audit_logging`: Enable or disable audit logging for native Discord moderation actions (admin only).
+- `/audit_logging`: Enable or disable audit logging for native Discord moderation actions.
 - `/set_selfroles`: Configure self-assignable roles for the server.
 - `/send_selfroles`: Send the self-roles message in a specified channel.
 - `/delete_selfroles`: Delete a self-roles configuration.
